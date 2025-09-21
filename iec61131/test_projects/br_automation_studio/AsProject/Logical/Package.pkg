@@ -5,7 +5,7 @@
     <Object Type="File" Description="Global data types">Global.typ</Object>
     <Object Type="File" Description="Global variables">Global.var</Object>
     <Object Type="Package" Description="Global libraries">Libraries</Object>
-    <Object Type="Library" Language="IEC">ProtoSt</Object>
+    <Object Type="Library" Language="IEC" Reference="true">E:\clients\br\nanopb_ST\iec61131\runtime\br\NanoPbSt\IEC.lby</Object>
     <Object Type="Library" Language="ANSIC">NanoPb</Object>
     <Object Type="Package">TS_UnitTest</Object>
   </Objects>

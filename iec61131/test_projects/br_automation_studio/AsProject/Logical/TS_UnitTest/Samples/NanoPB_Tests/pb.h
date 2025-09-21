@@ -444,7 +444,7 @@ extern bool pb_default_field_callback(pb_istream_t *istream, pb_ostream_t *ostre
 
 /* Wire types. Library user needs these only in encoder callbacks. */
 
-#ifndef _PROTOST_
+#ifndef _NANOPBST_
 typedef enum {
     PB_WT_VARINT = 0,
     PB_WT_64BIT  = 1,

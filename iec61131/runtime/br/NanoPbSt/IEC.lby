@@ -4,7 +4,7 @@
   <Files>
     <File Description="Exported data types">Types.typ</File>
     <File Description="Exported constants">Constants.var</File>
-    <File Description="Exported functions and function blocks">ProtoSt.fun</File>
+    <File Description="Exported functions and function blocks">NanoPbSt.fun</File>
     <File>pb_varint.st</File>
     <File>pb_stream.st</File>
     <File>pb_fields.st</File>
