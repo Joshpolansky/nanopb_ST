@@ -1,0 +1,24 @@
+{{PLATFORM_HEADER}}
+(* nanoPB Library Manifest for {{PLATFORM_NAME}} *)
+(* Generated automatically by nanoPB Runtime Template Engine *)
+
+LIBRARY nanoPB_{{PLATFORM_NAME}}
+    VERSION := '1.0.0';
+    AUTHOR := 'nanoPB Contributors';
+    DESCRIPTION := 'Protocol Buffers runtime library for {{PLATFORM_NAME}} IEC 61131-3';
+    
+    (* Core runtime files *)
+    INCLUDE 'Types{{FILE_EXT_TYPES}}';
+    INCLUDE 'Constants{{FILE_EXT_VARIABLES}}';
+    INCLUDE 'pb_stream{{FILE_EXT_CODE}}';
+    INCLUDE 'pb_codec{{FILE_EXT_CODE}}';
+    
+    (* Function exports *)
+    EXPORT pb_st_istream_from_buffer;
+    EXPORT pb_st_ostream_from_buffer;
+    EXPORT pb_st_read;
+    EXPORT pb_st_write;
+    EXPORT pb_st_encode;
+    EXPORT pb_st_decode;
+    
+END_LIBRARY

@@ -1,3 +1,4 @@
+(* nanoPB Runtime Library for B&R Automation Studio *)
 (* nanoPB main encode/decode functions *)
 (* Ported from nanoPB C library to B&R IEC 61131-3 ST *)
 
@@ -110,15 +111,8 @@ FUNCTION pb_st_encode_field
 			pb_st_encode_field := pb_st_encode_svarint(stream, int_ptr);
 			
 		PB_LTYPE_FIXED32:
-			(* Check if it's a float or uint32 *)
-			IF field.data_size = 4 THEN
-				real_ptr ACCESS field.pData;
-				uint_ptr ACCESS field.pData; (* Reinterpret cast *)
-				pb_st_encode_field := pb_st_encode_fixed32(stream, uint_ptr);
-			ELSE
-				uint_ptr ACCESS field.pData;
-				pb_st_encode_field := pb_st_encode_fixed32(stream, uint_ptr);
-			END_IF;
+			uint_ptr ACCESS field.pData;
+			pb_st_encode_field := pb_st_encode_fixed32(stream, uint_ptr);
 
 		PB_LTYPE_FIXED64:	
 			val_64 ACCESS field.pData;

@@ -1,27 +1,27 @@
-(* nanoPB Runtime Library for B&R Automation Studio *)
+{{PLATFORM_HEADER}}
 (* nanoPB stream functions *)
-(* Ported from nanoPB C library to B&R IEC 61131-3 ST *)
+(* Ported from nanoPB C library to {{PLATFORM_NAME}} IEC 61131-3 ST *)
 
 FUNCTION pb_st_istream_from_buffer
 	
 	(* Initialize input stream from buffer *)
-	stream.state := ADR(buf); (* Store buffer pointer in state *)
+	stream.state := {{ADR_FUNC}}(buf); (* Store buffer pointer in state *)
 	stream.bytes_left := bufsize;
 	stream.errmsg := '';
 	
-	pb_st_istream_from_buffer := ADR(stream);
+	pb_st_istream_from_buffer := {{ADR_FUNC}}(stream);
 	
 END_FUNCTION
 
 FUNCTION pb_st_ostream_from_buffer
 	
 	(* Initialize output stream from buffer *)
-	stream.state := ADR(buf); (* Store buffer pointer in state *)
+	stream.state := {{ADR_FUNC}}(buf); (* Store buffer pointer in state *)
 	stream.max_size := bufsize;
 	stream.bytes_written := 0;
 	stream.errmsg := '';
 	
-	pb_st_ostream_from_buffer := ADR(stream);
+	pb_st_ostream_from_buffer := {{ADR_FUNC}}(stream);
 	
 END_FUNCTION
 
@@ -35,11 +35,11 @@ FUNCTION pb_st_read
 	END_IF;
 	
 	(* Copy bytes from stream buffer to destination *)
-	src_ptr ACCESS stream.state;
-	dest_ptr ACCESS buf;
+	src_ptr {{FIELD_PTR_ACCESS}}stream.state;
+	dest_ptr {{FIELD_PTR_ACCESS}}buf;
 	
 	(* Use platform memory copy function for efficient memory copying *)
-	brsmemcpy(ADR(dest_ptr), ADR(src_ptr), count);
+	{{MEMCPY_FUNC}}({{ADR_FUNC}}(dest_ptr{{REF_DEREF}}), {{ADR_FUNC}}(src_ptr{{REF_DEREF}}), count);
 	
 	(* Update stream position *)
 	stream.state := stream.state + count;
@@ -60,7 +60,7 @@ FUNCTION pb_st_write
 	
 	(* Copy bytes from source to stream buffer *)
 	(* Use platform memory copy function for efficient memory copying *)
-	brsmemcpy(stream.state, buf, count);
+	{{MEMCPY_FUNC}}(stream.state, buf, count);
 	stream.state := stream.state + count;
 	(* Update stream position *)
 	stream.bytes_written := stream.bytes_written + count;
@@ -72,13 +72,13 @@ END_FUNCTION
 FUNCTION pb_st_make_string_substream
 	
 	(* First decode the string length *)
-	IF NOT pb_st_decode_varint(stream, ADR(length)) THEN
+	IF NOT pb_st_decode_varint(stream, {{ADR_FUNC}}(length)) THEN
 		pb_st_make_string_substream := FALSE;
 		RETURN;
 	END_IF;
 	
 	(* Check if we have enough data *)
-	IF stream.bytes_left < UDINT_TO_UINT(length) THEN
+	IF stream.bytes_left < UDINT_TO_{{TYPE_SIZE}}(length) THEN
 		stream.errmsg := PB_ERR_EOF;
 		pb_st_make_string_substream := FALSE;
 		RETURN;
@@ -86,12 +86,12 @@ FUNCTION pb_st_make_string_substream
 	
 	(* Initialize substream from current position *)
 	substream.state := stream.state;
-	substream.bytes_left := UDINT_TO_UINT(length);
+	substream.bytes_left := UDINT_TO_{{TYPE_SIZE}}(length);
 	substream.errmsg := '';
 	
 	(* Advance main stream *)
-	stream.state := stream.state + UDINT_TO_UINT(length);
-	stream.bytes_left := stream.bytes_left - UDINT_TO_UINT(length);
+	stream.state := stream.state + UDINT_TO_{{TYPE_SIZE}}(length);
+	stream.bytes_left := stream.bytes_left - UDINT_TO_{{TYPE_SIZE}}(length);
 	
 	pb_st_make_string_substream := TRUE;
 	

@@ -1,5 +1,5 @@
-(* nanoPB Runtime Library for B&R Automation Studio *)
-(* nanoPB library functions ported to B&R IEC 61131-3 ST *)
+{{PLATFORM_HEADER}}
+(* nanoPB library functions ported to {{PLATFORM_NAME}} IEC 61131-3 ST *)
 (* ===== STREAM FUNCTIONS ===== *)
 
 FUNCTION pb_st_istream_from_buffer : UDINT (*Create input stream from buffer - returns address*) (*$GROUP=nanoPB,$CAT=Stream,$GROUPICON=User.png,$CATICON=User.png*)
@@ -52,8 +52,8 @@ FUNCTION pb_st_encode_varint : BOOL (*Encode unsigned varint*) (*$GROUP=nanoPB,$
 	END_VAR
 	VAR
 		buffer : ARRAY[0..9] OF pb_byte_t; (* Max 10 bytes for 64-bit varint *)
-		i : USINT;
-		bytes_written : USINT;
+		i : {{TYPE_BYTE}};
+		bytes_written : {{TYPE_BYTE}};
 	END_VAR
 END_FUNCTION
 
@@ -64,7 +64,7 @@ FUNCTION pb_st_decode_varint : BOOL (*Decode unsigned varint*) (*$GROUP=nanoPB,$
 	END_VAR
 	VAR
 		byte_val : pb_byte_t;
-		bitpos : USINT;
+		bitpos : {{TYPE_BYTE}};
 		result : UDINT;
 	END_VAR
 END_FUNCTION
@@ -96,7 +96,7 @@ FUNCTION pb_st_encode_tag_for_field : BOOL (*Encode field tag and wire type*) (*
 		field : pb_field_iter_struct; (* Field iterator *)
 	END_VAR
 	VAR
-		wire_type : USINT;
+		wire_type : {{TYPE_BYTE}};
 		tag_and_type : UDINT;
 		length : UDINT;
 	END_VAR
@@ -151,7 +151,7 @@ FUNCTION pb_st_encode_fixed64 : BOOL (*Encode 64-bit fixed field*) (*$GROUP=nano
 	END_VAR
 	VAR
 		bytes : ARRAY[0..7] OF pb_byte_t;
-		i : USINT;
+		i : {{TYPE_BYTE}};
 	END_VAR
 END_FUNCTION
 
@@ -162,7 +162,7 @@ FUNCTION pb_st_decode_fixed64 : BOOL (*Decode 64-bit fixed field*) (*$GROUP=nano
 	END_VAR
 	VAR
 		bytes : ARRAY[0..7] OF pb_byte_t;
-		i : USINT;
+		i : {{TYPE_BYTE}};
 	END_VAR
 END_FUNCTION
 (* ===== FIELD ITERATOR FUNCTIONS ===== *)
@@ -184,7 +184,7 @@ FUNCTION pb_st_field_iter_next : BOOL (*Move to next field*) (*$GROUP=nanoPB,$CA
 		field_info_ptr : REFERENCE TO ARRAY[0..0] OF UDINT;
 		prev_descriptor : UDINT;
 		descriptor_len : UDINT;
-		prev_type : USINT;
+		prev_type : {{TYPE_TYPE}};
 	END_VAR
 END_FUNCTION
 
@@ -284,7 +284,7 @@ FUNCTION pb_st_encode_field : BOOL (*Encode single field*) (*$GROUP=nanoPB,$CAT=
 		field : pb_field_iter_struct; (* Field iterator *)
 	END_VAR
 	VAR
-		field_type : USINT;
+		field_type : {{TYPE_TYPE}};
 		has_value : BOOL;
 		bool_ptr : REFERENCE TO BOOL;
 		int_ptr : REFERENCE TO DINT;
@@ -302,7 +302,7 @@ FUNCTION pb_st_decode_field : BOOL (*Decode single field*) (*$GROUP=nanoPB,$CAT=
 		wire_type : pb_wire_type_t; (* Wire type from tag *)
 	END_VAR
 	VAR
-		field_type : USINT;
+		field_type : {{TYPE_TYPE}};
 		expected_wire_type : pb_wire_type_t;
 		temp_uint : UDINT;
 		bool_ptr : REFERENCE TO BOOL;

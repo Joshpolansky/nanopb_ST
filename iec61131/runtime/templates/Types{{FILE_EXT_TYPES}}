@@ -1,14 +1,14 @@
-(* nanoPB Runtime Library for B&R Automation Studio *)
-(* nanoPB types ported to B&R IEC 61131-3 ST *)
+{{PLATFORM_HEADER}}
+(* nanoPB types ported to {{PLATFORM_NAME}} IEC 61131-3 ST *)
 (* Basic data type for storing encoded data and other byte streams *)
 
 TYPE
-	pb_byte_t : USINT; (* Data type for storing sizes of struct fields and array counts *)
-	pb_size_t : UINT;
-	pb_ssize_t : INT; (* Field type information - encodes field type, allocation and repetition *)
-	pb_type_t : USINT; (* Wire types for protocol buffer encoding *)
+	pb_byte_t : {{TYPE_BYTE}}; (* Data type for storing sizes of struct fields and array counts *)
+	pb_size_t : {{TYPE_SIZE}};
+	pb_ssize_t : {{TYPE_SSIZE}}; (* Field type information - encodes field type, allocation and repetition *)
+	pb_type_t : {{TYPE_TYPE}}; (* Wire types for protocol buffer encoding *)
 	pb_wire_type_t : 
-		( (* 64-bit unsigned integer structure for B&R compatibility *)
+		( (* 64-bit unsigned integer structure for {{PLATFORM_NAME}} compatibility *)
 		PB_WT_VARINT := 0,
 		PB_WT_64BIT := 1,
 		PB_WT_STRING := 2,
@@ -23,7 +23,7 @@ END_TYPE
 (* Input stream structure for decoding *)
 
 TYPE
-	pb_istream_struct : 	STRUCT  (* Callback function would go here - not applicable in B&R *) (* We'll use buffer-only mode *) (* Free field for implementation use *)
+	pb_istream_struct : 	STRUCT  (* Callback function would go here - not applicable in {{PLATFORM_NAME}} *) (* We'll use buffer-only mode *) (* Free field for implementation use *)
 		state : REFERENCE TO UDINT; (* Buffer pointer and remaining bytes *)
 		bytes_left : pb_size_t; (* Error message for debugging *)
 		errmsg : STRING[80];

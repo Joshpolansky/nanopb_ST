@@ -1,6 +1,6 @@
-(* nanoPB Runtime Library for B&R Automation Studio *)
+{{PLATFORM_HEADER}}
 (* nanoPB varint encoding/decoding functions *)
-(* Ported from nanoPB C library to B&R IEC 61131-3 ST *)
+(* Ported from nanoPB C library to {{PLATFORM_NAME}} IEC 61131-3 ST *)
 
 FUNCTION pb_st_encode_varint
 	
@@ -8,7 +8,7 @@ FUNCTION pb_st_encode_varint
 	i := 0;
 	
 	REPEAT
-		buffer[i] := UDINT_TO_USINT(value AND 16#7F); (* Take lower 7 bits *)
+		buffer[i] := UDINT_TO_{{TYPE_BYTE}}(value AND 16#7F); (* Take lower 7 bits *)
 		value := SHR(value, 7); (* Shift right by 7 bits *)
 		
 		IF value <> 0 THEN
@@ -21,7 +21,7 @@ FUNCTION pb_st_encode_varint
 	bytes_written := i;
 	
 	(* Write the encoded bytes to stream *)
-	pb_st_encode_varint := pb_st_write(stream, ADR(buffer[0]), bytes_written);
+	pb_st_encode_varint := pb_st_write(stream, {{ADR_FUNC}}(buffer[0]), bytes_written);
 	
 END_FUNCTION
 
@@ -32,13 +32,13 @@ FUNCTION pb_st_decode_varint
 	
 	(* Decode varint using 7-bit encoding *)
 	REPEAT
-		IF NOT pb_st_read(stream, ADR(byte_val), 1) THEN
+		IF NOT pb_st_read(stream, {{ADR_FUNC}}(byte_val), 1) THEN
 			pb_st_decode_varint := FALSE;
 			RETURN;
 		END_IF;
 		
 		(* Add the 7 bits to result *)
-		result := result OR SHL(USINT_TO_UDINT(byte_val AND 16#7F), bitpos);
+		result := result OR SHL({{TYPE_BYTE}}_TO_UDINT(byte_val AND 16#7F), bitpos);
 		bitpos := bitpos + 7;
 		
 		(* Check if we have more bytes (continuation bit set) *)
@@ -75,7 +75,7 @@ END_FUNCTION
 
 FUNCTION pb_st_decode_svarint
 	
-	IF NOT pb_st_decode_varint(stream, ADR(encoded)) THEN
+	IF NOT pb_st_decode_varint(stream, {{ADR_FUNC}}(encoded)) THEN
 		pb_st_decode_svarint := FALSE;
 		RETURN;
 	END_IF;

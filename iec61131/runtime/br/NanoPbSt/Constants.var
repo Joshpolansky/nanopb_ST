@@ -41,7 +41,7 @@ VAR CONSTANT
 	PB_WIRE_TYPE_MASK : USINT := 16#07;
 	
 	(* nanoPB version *)
-	NANOPB_VERSION : STRING[20] := 'nanopb-1.0.0-dev-br';
+	NANOPB_VERSION : STRING[20] := 'nanopb-1.0.0-dev-B&R';
 	
 	(* Error constants *)
 	PB_ERR_NONE : STRING[30] := '';
