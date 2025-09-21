@@ -1,0 +1,209 @@
+(* nanoPB field iterator functions *)
+(* Ported from nanoPB C library to B&R IEC 61131-3 ST *)
+
+FUNCTION pb_st_field_iter_begin
+	
+	(* Initialize field iterator *)
+	iter.descriptor := ADR(descriptor);
+	iter.message := message;
+	iter.index := 0;
+	iter.field_info_index := 0;
+	iter.required_field_index := 0;
+	iter.submessage_index := 0;
+	
+	(* Load first field if it exists *)
+	IF descriptor.field_count > 0 THEN
+		pb_st_field_iter_begin := pb_st_load_descriptor_values(iter);
+	ELSE
+		pb_st_field_iter_begin := FALSE;
+	END_IF;
+	
+END_FUNCTION
+
+FUNCTION pb_st_field_iter_next
+	
+	(* Move to next field *)
+	iter.index := iter.index + 1;
+	
+	desc_ref ACCESS iter.descriptor;
+	IF iter.index >= desc_ref.field_count THEN
+		pb_st_field_iter_next := FALSE;
+		RETURN;
+	END_IF;
+	
+	(* Increment field_info_index based on previous field descriptor format *)
+	(* Get the previous field descriptor to determine its length *)
+	field_info_ptr ACCESS desc_ref.field_info;
+	prev_descriptor := field_info_ptr[iter.field_info_index];
+	
+	(* Calculate descriptor length: 2^(lowest 2 bits) words *)
+	descriptor_len := SHL(1, (prev_descriptor AND 16#03));
+	
+	(* Advance field_info_index by descriptor length *)
+	iter.field_info_index := iter.field_info_index + UDINT_TO_UINT(descriptor_len);
+	
+	(* Update other indexes if needed *)
+	prev_type := UDINT_TO_USINT(SHR(prev_descriptor, 8) AND 16#FF);
+	IF (prev_type AND PB_HTYPE_MASK) = PB_HTYPE_REQUIRED THEN
+		iter.required_field_index := iter.required_field_index + 1;
+	END_IF;
+	
+	(* Load values for the new field *)
+	pb_st_field_iter_next := pb_st_load_descriptor_values(iter);
+	
+END_FUNCTION
+
+FUNCTION pb_st_field_iter_find
+	
+	(* Reset to beginning *)
+	dpb_msgdesc_struct ACCESS iter.descriptor;
+	IF NOT pb_st_field_iter_begin(iter, dpb_msgdesc_struct, iter.message) THEN
+		pb_st_field_iter_find := FALSE;
+		RETURN;
+	END_IF;
+	
+	(* Search for matching tag *)
+	REPEAT
+		IF iter.tag = tag THEN
+			pb_st_field_iter_find := TRUE;
+			RETURN;
+		END_IF;
+	UNTIL NOT pb_st_field_iter_next(iter) END_REPEAT;
+	
+	pb_st_field_iter_find := FALSE;
+	
+END_FUNCTION
+
+FUNCTION pb_st_load_descriptor_values
+	
+	desc_ref ACCESS iter.descriptor;
+	IF iter.index >= desc_ref.field_count THEN
+		pb_st_load_descriptor_values := FALSE;
+		RETURN;
+	END_IF;
+	
+	(* Get the field info array and access the current field descriptor *)
+	field_info_ptr ACCESS desc_ref.field_info;
+	word0 := field_info_ptr[iter.field_info_index];
+	
+	(* Extract field type - always in bits 8-15 *)
+	iter.type := UDINT_TO_USINT(SHR(word0, 8) AND 16#FF);
+	
+	(* Handle different descriptor formats based on lowest 2 bits *)
+	descriptor_format := word0 AND 16#03;
+	
+	CASE descriptor_format OF
+		0: (* 1-word format *)
+			(* Tag is in bits 2-7 *)
+			iter.tag := UDINT_TO_UINT(SHR(word0, 2) AND 16#3F);
+			(* Size offset is in bits 24-27 (signed 4-bit) *)
+			size_offset_raw := SHR(word0, 24) AND 16#0F;
+			IF size_offset_raw >= 8 THEN
+				size_offset := UDINT_TO_DINT(size_offset_raw) - 16;
+			ELSE
+				size_offset := UDINT_TO_DINT(size_offset_raw);
+			END_IF;
+			(* Data offset is in bits 16-23 *)
+			data_offset := SHR(word0, 16) AND 16#FF;
+			(* Data size is in bits 28-31 *)
+			iter.data_size := UDINT_TO_UINT(SHR(word0, 28) AND 16#0F);
+			(* Array size is 1 for single fields *)
+			iter.array_size := 1;
+			
+		1: (* 2-word format *)
+			word1 := field_info_ptr[iter.field_info_index + 1];
+			(* Array size is in bits 16-27 of word0 *)
+			iter.array_size := UDINT_TO_UINT(SHR(word0, 16) AND 16#0FFF);
+			(* Tag combines bits 2-7 of word0 and bits 28-31 of word1 *)
+			iter.tag := UDINT_TO_UINT((SHR(word0, 2) AND 16#3F) OR (SHR(word1, 28) * 64));
+			(* Size offset is in bits 28-31 of word0 (signed 4-bit) *)
+			size_offset_raw := SHR(word0, 28) AND 16#0F;
+			IF size_offset_raw >= 8 THEN
+				size_offset := UDINT_TO_DINT(size_offset_raw) - 16;
+			ELSE
+				size_offset := UDINT_TO_DINT(size_offset_raw);
+			END_IF;
+			(* Data offset is in bits 0-15 of word1 *)
+			data_offset := word1 AND 16#FFFF;
+			(* Data size is in bits 16-27 of word1 *)
+			iter.data_size := UDINT_TO_UINT(SHR(word1, 16) AND 16#0FFF);
+			
+		2: (* 4-word format *)
+			word1 := field_info_ptr[iter.field_info_index + 1];
+			word2 := field_info_ptr[iter.field_info_index + 2];
+			word3 := field_info_ptr[iter.field_info_index + 3];
+			(* Array size is in bits 16-31 of word0 *)
+			iter.array_size := UDINT_TO_UINT(SHR(word0, 16));
+			(* Tag combines bits 2-7 of word0 and bits 8-31 of word1 *)
+			iter.tag := UDINT_TO_UINT((SHR(word0, 2) AND 16#3F) OR (SHR(word1, 8) * 64));
+			(* Size offset is in bits 0-7 of word1 (signed 8-bit) *)
+			size_offset_raw := word1 AND 16#FF;
+			IF size_offset_raw >= 128 THEN
+				size_offset := UDINT_TO_DINT(size_offset_raw) - 256;
+			ELSE
+				size_offset := UDINT_TO_DINT(size_offset_raw);
+			END_IF;
+			(* Data offset is word2 *)
+			data_offset := word2;
+			(* Data size is word3 *)
+			iter.data_size := UDINT_TO_UINT(word3);
+			
+		3: (* 8-word format *)
+			word1 := field_info_ptr[iter.field_info_index + 1];
+			word2 := field_info_ptr[iter.field_info_index + 2];
+			word3 := field_info_ptr[iter.field_info_index + 3];
+			word4 := field_info_ptr[iter.field_info_index + 4];
+			(* Array size is word4 *)
+			iter.array_size := UDINT_TO_UINT(word4);
+			(* Tag combines bits 2-7 of word0 and bits 8-31 of word1 *)
+			iter.tag := UDINT_TO_UINT((SHR(word0, 2) AND 16#3F) OR (SHR(word1, 8) * 64));
+			(* Size offset is in bits 0-7 of word1 (signed 8-bit) *)
+			size_offset_raw := word1 AND 16#FF;
+			IF size_offset_raw >= 128 THEN
+				size_offset := UDINT_TO_DINT(size_offset_raw) - 256;
+			ELSE
+				size_offset := UDINT_TO_DINT(size_offset_raw);
+			END_IF;
+			(* Data offset is word2 *)
+			data_offset := word2;
+			(* Data size is word3 *)
+			iter.data_size := UDINT_TO_UINT(word3);
+			
+	END_CASE;
+	
+	(* Calculate field pointers *)
+	IF iter.message = 0 THEN
+		(* Avoid arithmetic on null pointers *)
+		iter.pField := 0;
+		iter.pSize := 0;
+		iter.pData := 0;
+	ELSE
+		iter.pField := iter.message + data_offset;
+		
+		(* Calculate pSize based on size_offset from nanoPB descriptor *)
+		IF size_offset <> 0 THEN
+			(* Standard nanoPB format with explicit size_offset *)
+			iter.pSize := UDINT_TO_DINT(iter.pField) - size_offset;
+		ELSIF (iter.type AND PB_HTYPE_MASK) = PB_HTYPE_REPEATED AND 
+			  ((iter.type AND PB_ATYPE_MASK) = PB_ATYPE_STATIC OR (iter.type AND PB_ATYPE_MASK) = PB_ATYPE_POINTER) THEN
+			(* For repeated fields, pSize points to array_size *)
+			iter.pSize := ADR(iter.array_size);
+		ELSE
+			(* Required/singular fields don't need size field *)
+			iter.pSize := 0;
+		END_IF;
+		
+		(* Calculate pData based on allocation type *)
+		IF (iter.type AND PB_ATYPE_MASK) = PB_ATYPE_POINTER AND iter.pField <> 0 THEN
+			(* For pointer fields, pData is the pointed-to location *)
+			ptr_ptr ACCESS iter.pField;
+			iter.pData := ptr_ptr;
+		ELSE
+			(* For static allocation, pData same as pField *)
+			iter.pData := iter.pField;
+		END_IF;
+	END_IF;
+	
+	pb_st_load_descriptor_values := TRUE;
+	
+END_FUNCTION

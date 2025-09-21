@@ -1,0 +1,180 @@
+(* nanoPB field encoding/decoding functions *)
+(* Ported from nanoPB C library to B&R IEC 61131-3 ST *)
+
+FUNCTION pb_st_encode_tag_for_field
+	
+	(* Determine wire type based on field type *)
+	CASE (field.type AND PB_LTYPE_MASK) OF
+		PB_LTYPE_BOOL, PB_LTYPE_VARINT, PB_LTYPE_UVARINT, PB_LTYPE_SVARINT:
+			wire_type := DINT_TO_USINT(PB_WT_VARINT);
+		PB_LTYPE_FIXED32:
+			wire_type := DINT_TO_USINT(PB_WT_32BIT);
+		PB_LTYPE_FIXED64:
+			wire_type := DINT_TO_USINT(PB_WT_64BIT);
+		PB_LTYPE_STRING, PB_LTYPE_BYTES, PB_LTYPE_SUBMESSAGE, PB_LTYPE_FIXED_LENGTH_BYTES:
+			wire_type := DINT_TO_USINT(PB_WT_STRING);
+	ELSE
+		stream.errmsg := PB_ERR_INVALID_FIELD;
+		pb_st_encode_tag_for_field := FALSE;
+		RETURN;
+	END_CASE;
+	
+	(* Combine tag and wire type: (tag << 3) | wire_type *)
+	tag_and_type := SHL(UINT_TO_UDINT(field.tag), 3) OR USINT_TO_UDINT(wire_type);
+	
+	pb_st_encode_tag_for_field := pb_st_encode_varint(stream, tag_and_type);
+	
+END_FUNCTION
+
+FUNCTION pb_st_encode_fixed32
+	
+	(* Encode as little-endian 32-bit *)
+	bytes[0] := UDINT_TO_USINT(value AND 16#FF);
+	bytes[1] := UDINT_TO_USINT(SHR(value, 8) AND 16#FF);
+	bytes[2] := UDINT_TO_USINT(SHR(value, 16) AND 16#FF);
+	bytes[3] := UDINT_TO_USINT(SHR(value, 24) AND 16#FF);
+	
+	pb_st_encode_fixed32 := pb_st_write(stream, ADR(bytes[0]), 4);
+	
+END_FUNCTION
+
+FUNCTION pb_st_decode_fixed32
+	
+	IF NOT pb_st_read(stream, ADR(bytes[0]), 4) THEN
+		pb_st_decode_fixed32 := FALSE;
+		RETURN;
+	END_IF;
+	
+	(* Decode from little-endian 32-bit *)
+	dest := USINT_TO_UDINT(bytes[0]) OR 
+	         SHL(USINT_TO_UDINT(bytes[1]), 8) OR
+	         SHL(USINT_TO_UDINT(bytes[2]), 16) OR
+	         SHL(USINT_TO_UDINT(bytes[3]), 24);
+	
+	pb_st_decode_fixed32 := TRUE;
+	
+END_FUNCTION
+
+FUNCTION pb_st_encode_fixed64
+	
+	(* Encode as little-endian 64-bit from structure *)
+	(* Encode lower 32 bits *)
+	FOR i := 0 TO 3 DO
+		bytes[i] := UDINT_TO_USINT(SHR(value.low, i * 8) AND 16#FF);
+	END_FOR;
+	
+	(* Encode upper 32 bits *)
+	FOR i := 4 TO 7 DO
+		bytes[i] := UDINT_TO_USINT(SHR(value.high, (i - 4) * 8) AND 16#FF);
+	END_FOR;
+	
+	pb_st_encode_fixed64 := pb_st_write(stream, ADR(bytes[0]), 8);
+	
+END_FUNCTION
+
+FUNCTION pb_st_decode_fixed64
+	
+	IF NOT pb_st_read(stream, ADR(bytes[0]), 8) THEN
+		pb_st_decode_fixed64 := FALSE;
+		RETURN;
+	END_IF;
+	
+	(* Decode from little-endian 64-bit into structure *)
+	dest.low := 0;
+	dest.high := 0;
+	
+	(* Decode lower 32 bits *)
+	FOR i := 0 TO 3 DO
+		dest.low := dest.low OR SHL(USINT_TO_UDINT(bytes[i]), i * 8);
+	END_FOR;
+	
+	(* Decode upper 32 bits *)
+	FOR i := 4 TO 7 DO
+		dest.high := dest.high OR SHL(USINT_TO_UDINT(bytes[i]), (i - 4) * 8);
+	END_FOR;
+	
+	pb_st_decode_fixed64 := TRUE;
+	
+END_FUNCTION
+
+FUNCTION pb_st_encode_string
+	
+	str_len := UDINT_TO_UINT(brsstrlen(ADR(s)));
+	
+	(* First encode the string length as varint *)
+	IF NOT pb_st_encode_varint(stream, UINT_TO_UDINT(str_len)) THEN
+		pb_st_encode_string := FALSE;
+		RETURN;
+	END_IF;
+	
+	(* Then encode the string bytes *)
+	pb_st_encode_string := pb_st_write(stream, ADR(s), str_len);
+	
+END_FUNCTION
+
+FUNCTION pb_st_decode_string
+	
+	(* First decode the string length *)
+	IF NOT pb_st_decode_varint(stream, ADR(str_len)) THEN
+		pb_st_decode_string := FALSE;
+		RETURN;
+	END_IF;
+	
+	(* Check if string fits in destination *)
+	IF str_len >= size THEN
+		stream.errmsg := PB_ERR_BUFFER_OVERFLOW;
+		pb_st_decode_string := FALSE;
+		RETURN;
+	END_IF;
+	
+	(* Read string bytes *)
+	IF str_len > 0 THEN
+		IF NOT pb_st_read(stream, ADR(temp_str), UDINT_TO_UINT(str_len)) THEN
+			pb_st_decode_string := FALSE;
+			RETURN;
+		END_IF;
+		
+		(* Null terminate and copy to destination *)
+		brsmemcpy(ADR(dest), ADR(temp_str), UDINT_TO_UINT(str_len));
+	END_IF;
+	
+	pb_st_decode_string := TRUE;
+	
+END_FUNCTION
+
+FUNCTION pb_st_skip_field
+	
+	CASE wire_type OF
+		PB_WT_VARINT:
+			(* Skip varint by reading and discarding *)
+			pb_st_skip_field := pb_st_decode_varint(stream, ADR(dummy_value));
+			
+		PB_WT_32BIT:
+			(* Skip 4 bytes *)
+			pb_st_skip_field := pb_st_decode_fixed32(stream, ADR(dummy_value));
+			
+		PB_WT_64BIT:
+			(* Skip 8 bytes *)
+			pb_st_skip_field := pb_st_decode_fixed64(stream, ADR(dummy_value64));
+			
+		PB_WT_STRING:
+			(* Read length and skip that many bytes *)
+			IF pb_st_decode_varint(stream, ADR(length)) THEN
+				IF stream.bytes_left >= UDINT_TO_UINT(length) THEN
+					stream.state := stream.state + UDINT_TO_UINT(length);
+					stream.bytes_left := stream.bytes_left - UDINT_TO_UINT(length);
+					pb_st_skip_field := TRUE;
+				ELSE
+					stream.errmsg := PB_ERR_EOF;
+					pb_st_skip_field := FALSE;
+				END_IF;
+			ELSE
+				pb_st_skip_field := FALSE;
+			END_IF;
+			
+	ELSE
+		stream.errmsg := PB_ERR_INVALID_WIRE_TYPE;
+		pb_st_skip_field := FALSE;
+	END_CASE;
+	
+END_FUNCTION
