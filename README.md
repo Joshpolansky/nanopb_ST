@@ -1,8 +1,31 @@
-Nanopb - Protocol Buffers for Embedded Systems
-==============================================
+Nanopb_ST - Protocol Buffers for Embedded Systems + IEC 61131-3
+========================================================================
 
 ![Latest change](https://github.com/nanopb/nanopb/actions/workflows/trigger_on_code_change.yml/badge.svg)
 ![Weekly build](https://github.com/nanopb/nanopb/actions/workflows/trigger_on_schedule.yml/badge.svg)
+
+**nanopb_ST** extends the proven nanoPB Protocol Buffers implementation with support for **IEC 61131-3 Structured Text**, enabling Protocol Buffers in industrial automation environments.
+
+## 🏭 IEC 61131-3 Extension
+
+This repository adds **Structured Text (ST)** support to nanoPB, specifically designed for:
+- **B&R Automation Studio** (active development)
+- **CodeSys** (planned)  
+- **Other IEC 61131-3 platforms** (future)
+
+### 📁 IEC 61131-3 Components
+- **`iec61131/`** - Complete IEC 61131-3 implementation
+  - **`runtime/`** - ST runtime libraries for different platforms
+  - **`generator/`** - Code generators for ST output from .proto files
+  - **`test_projects/`** - Platform-specific test projects
+  - **`docs/`** - IEC 61131-3 specific documentation
+  - **`examples/`** - Working examples and tutorials
+
+    **[Get Started with IEC 61131-3 →](iec61131/README.md)**
+
+---
+
+## 🔧 Original nanoPB
 
 Nanopb is a small code-size Protocol Buffers implementation in ansi C. It is
 especially suitable for use in microcontrollers, but fits any memory
