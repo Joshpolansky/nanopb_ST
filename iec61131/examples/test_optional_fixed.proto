@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+import "nanopb.proto";
+
+message TestOptionalWithFixedStrings {
+  // Regular required fields
+  int32 required_int = 1;
+  
+  // Optional fields with nanoPB options for fixed-size strings (STATIC allocation)
+  optional string fixed_string = 2 [(nanopb).max_length = 32];
+  optional bytes fixed_bytes = 3 [(nanopb).max_length = 64];
+  optional int32 optional_int = 4;
+  
+  // Repeated with fixed size (STATIC allocation)
+  repeated int32 numbers = 5 [(nanopb).max_count = 10];
+  repeated string names = 6 [(nanopb).max_count = 5, (nanopb).max_length = 16];
+}

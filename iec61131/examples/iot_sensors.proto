@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+// Sample IoT sensor data for industrial automation
+message SensorReading {
+  int32 sensor_id = 1;          // Unique sensor identifier
+  float temperature = 2;        // Temperature in Celsius
+  float humidity = 3;           // Humidity percentage
+  bool alarm_active = 4;        // Alert status
+  string location = 5;          // Sensor location description
+  int64 timestamp = 6;          // Unix timestamp
+  repeated float readings = 7;  // Historical readings array
+}
+
+// Control command for actuators
+message ControlCommand {
+  int32 command_id = 1;         // Command identifier
+  string command_name = 2;      // Human-readable command name
+  repeated float parameters = 3; // Command parameters
+  bool urgent = 4;              // Priority flag
+  int32 target_device = 5;      // Target device ID
+    int64 timestamp = 6;          // Command issue timestamp
+}
+
+// System status report
+message SystemStatus {
+  string system_name = 1;       // System identifier
+  bool online = 2;              // System availability
+  float cpu_usage = 3;          // CPU usage percentage
+  float memory_usage = 4;       // Memory usage percentage
+  int32 active_connections = 5; // Number of active connections
+  repeated string error_messages = 6; // Current error messages
+}
