@@ -853,13 +853,13 @@ if __name__ == "__main__":
         epilog="""
 Examples:
   # B&R Automation Studio (default)
-  python nanopb_simple_class_based_st_generator.py sensor.proto output/
+  python nanopb_st_generator.py sensor.proto output/
   
   # Codesys
-  python nanopb_simple_class_based_st_generator.py sensor.proto output/ --platform codesys
+  python nanopb_st_generator.py sensor.proto output/ --platform codesys
   
   # TwinCAT
-  python nanopb_simple_class_based_st_generator.py sensor.proto output/ --platform twincat
+  python nanopb_st_generator.py sensor.proto output/ --platform twincat
 
 Supported platforms:
   br      - B&R Automation Studio (.typ/.var/.st files, VAR scope)
