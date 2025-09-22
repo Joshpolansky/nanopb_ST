@@ -314,9 +314,6 @@ class STFieldWrapper:
 
         lines = []
         lines.append(
-            f"        (* {self.field.name}: {self.st_type} {self.field.rules} *)"
-        )
-        lines.append(
             f"        (tag := {tag}, atype := {atype}, htype := {htype}, "
             f"ltype := {ltype}, wireType := {wire_type}, dataSize := {data_size}, maxCount := {max_count}){comma}"
         )
@@ -350,7 +347,7 @@ class STMessageWrapper:
             field_lines = field.st_field_declarations()
             lines.extend(field_lines)
 
-        lines.append("END_STRUCT")
+        lines.append("END_STRUCT;")
         lines.append("END_TYPE")
         lines.append("")
 
@@ -682,86 +679,6 @@ def generate_st_from_proto_simple_class_based(
                 f"🎨 Wrapping with ST functionality for {platform_config.platform_name} platform..."
             )
             st_proto_file = STProtoFileWrapper(nanopb_proto_file, platform_config)
-
-            # Generate base types if needed
-            try:
-                from protobuf_base_types import ProtobufBaseGenerator
-
-                # Ensure output directory exists
-                os.makedirs(output_dir, exist_ok=True)
-
-                # Create base generator
-                base_generator = ProtobufBaseGenerator(platform_config)
-
-                # Generate base files based on platform file structure
-                if platform_config.file_structure == "single_type_per_file":
-                    print(
-                        "🔀 Generating individual protobuf base files for single-type-per-file platform..."
-                    )
-
-                    # Generate individual base type files
-                    for base_type in base_generator.get_available_types():
-                        base_typ_file = os.path.join(
-                            output_dir,
-                            f"ProtobufBase{base_type}{platform_config.file_extensions['types']}",
-                        )
-                        if not os.path.exists(base_typ_file):
-                            with open(base_typ_file, "w") as f:
-                                f.write(
-                                    base_generator.generate_individual_type(base_type)
-                                )
-                            print(
-                                f"  ✅ ProtobufBase{base_type}{platform_config.file_extensions['types']}"
-                            )
-
-                    # Generate individual constant group files
-                    for const_group in base_generator.get_available_constant_groups():
-                        base_const_file = os.path.join(
-                            output_dir,
-                            f"ProtobufBase{const_group}{platform_config.file_extensions['variables']}",
-                        )
-                        if not os.path.exists(base_const_file):
-                            with open(base_const_file, "w") as f:
-                                f.write(
-                                    base_generator.generate_individual_constant_group(
-                                        const_group
-                                    )
-                                )
-                            print(
-                                f"  ✅ ProtobufBase{const_group}{platform_config.file_extensions['variables']}"
-                            )
-
-                else:
-                    print(
-                        "📄 Generating consolidated protobuf base files for multiple-types-per-file platform..."
-                    )
-
-                    # Generate consolidated files (traditional approach)
-                    base_typ_file = os.path.join(
-                        output_dir,
-                        f"protobuf_base{platform_config.file_extensions['types']}",
-                    )
-                    base_var_file = os.path.join(
-                        output_dir,
-                        f"protobuf_base{platform_config.file_extensions['variables']}",
-                    )
-
-                    if not os.path.exists(base_typ_file):
-                        with open(base_typ_file, "w") as f:
-                            f.write(base_generator.generate_all_types())
-                        print(
-                            f"✅ Generated base types: protobuf_base{platform_config.file_extensions['types']}"
-                        )
-
-                    if not os.path.exists(base_var_file):
-                        with open(base_var_file, "w") as f:
-                            f.write(base_generator.generate_all_constants())
-                        print(
-                            f"✅ Generated base constants: protobuf_base{platform_config.file_extensions['variables']}"
-                        )
-
-            except ImportError:
-                print("⚠️  Base types module not found - continuing without base files")
 
             # Generate ST files using nanoPB class-based approach
             print("🎨 Generating ST files using nanoPB classes via composition...")
