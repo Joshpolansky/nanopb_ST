@@ -2,7 +2,12 @@
 (* nanoPB field iterator functions *)
 (* Ported from nanoPB C library to {{PLATFORM_NAME}} IEC 61131-3 ST *)
 
-FUNCTION pb_st_field_iter_begin
+FUNCTION pb_st_field_iter_begin : BOOL (* Initialize field iterator *)
+	VAR_INPUT
+		iter : pb_field_iter_struct; (* Iterator to initialize *)
+		descriptor : pb_msgdesc_struct; (* Message descriptor *)
+		message : UDINT; (* Message structure *)
+	END_VAR
 	
 	(* Initialize field iterator *)
 	iter.descriptor := {{ADR_FUNC}}(descriptor);
@@ -21,8 +26,18 @@ FUNCTION pb_st_field_iter_begin
 	
 END_FUNCTION
 
-FUNCTION pb_st_field_iter_next
-	
+FUNCTION pb_st_field_iter_next : BOOL (* Move to next field *)
+	VAR_INPUT
+		iter : pb_field_iter_struct; (* Field iterator *)
+	END_VAR
+	VAR
+		desc_ref : REFERENCE TO pb_msgdesc_struct;
+		field_info_ptr : REFERENCE TO ARRAY[0..0] OF UDINT;
+		prev_descriptor : UDINT;
+		descriptor_len : UDINT;
+		prev_type : USINT;
+	END_VAR
+
 	(* Move to next field *)
 	iter.index := iter.index + 1;
 	
@@ -54,7 +69,14 @@ FUNCTION pb_st_field_iter_next
 	
 END_FUNCTION
 
-FUNCTION pb_st_field_iter_find
+FUNCTION pb_st_field_iter_find : BOOL (* Find field by tag *)
+	VAR_INPUT
+		iter : pb_field_iter_struct; (* Field iterator *)
+		tag : pb_size_t; (* Tag to find *)
+	END_VAR
+	VAR
+		dpb_msgdesc_struct : REFERENCE TO pb_msgdesc_struct;
+	END_VAR
 	
 	(* Reset to beginning *)
 	dpb_msgdesc_struct {{FIELD_PTR_ACCESS}}iter.descriptor;
@@ -75,8 +97,25 @@ FUNCTION pb_st_field_iter_find
 	
 END_FUNCTION
 
-FUNCTION pb_st_load_descriptor_values
-	
+FUNCTION pb_st_load_descriptor_values : BOOL (* Load field descriptor values *)
+	VAR_INPUT
+		iter : pb_field_iter_struct; (* Field iterator *)
+	END_VAR
+	VAR
+		desc_ref : REFERENCE TO pb_msgdesc_struct;
+		word0 : UDINT;
+		word1 : UDINT;
+		word2 : UDINT;
+		word3 : UDINT;
+		word4 : UDINT;
+		data_offset : UDINT;
+		size_offset : DINT;
+		size_offset_raw : UDINT;
+		descriptor_format : UDINT;
+		field_info_ptr : REFERENCE TO ARRAY[0..0] OF UDINT;
+		ptr_ptr : REFERENCE TO UDINT;
+	END_VAR
+    
 	desc_ref {{FIELD_PTR_ACCESS}}iter.descriptor;
 	IF iter.index >= desc_ref{{REF_DEREF}}.field_count THEN
 		pb_st_load_descriptor_values := FALSE;

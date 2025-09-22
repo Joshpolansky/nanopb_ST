@@ -17,7 +17,7 @@ All template tokens use the format: `{{TOKEN_NAME}}`
 ### Memory Functions
 - `{{MEMCPY_FUNC}}` - Memory copy function (brsmemcpy, MEMCPY)
 - `{{MEMSET_FUNC}}` - Memory set function (brsmemset, MEMSET)
-- `{{STRLEN_FUNC}}` - String length function (brsstrcmp, LEN)
+- `{{STRLEN_FUNC}}` - String length function (brsstrlen, LEN)
 
 ### Pointer and Memory Access
 - `{{PTR_ACCESS}}` - Pointer access pattern (ACCESS, ^)
@@ -26,7 +26,7 @@ All template tokens use the format: `{{TOKEN_NAME}}`
 - `{{ADR_FUNC}}` - Address-of function (ADR)
 
 ### Variable Scope Keywords
-- `{{SCOPE_CONSTANT}}` - Constant variable scope (VAR_CONSTANT, VAR_GLOBAL CONSTANT)
+- `{{SCOPE_CONSTANT}}` - Constant variable scope (VAR CONSTANT, VAR_GLOBAL CONSTANT)
 - `{{SCOPE_GLOBAL}}` - Global variable scope (VAR, VAR_GLOBAL)
 - `{{SCOPE_LOCAL}}` - Local variable scope (VAR, VAR)
 
@@ -45,7 +45,7 @@ All template tokens use the format: `{{TOKEN_NAME}}`
 
 ### Before (B&R specific):
 ```st
-VAR_CONSTANT
+VAR CONSTANT
     pb_byte_t : USINT;
 END_VAR
 
@@ -79,7 +79,7 @@ END_FUNCTION
     "FILE_EXT_LIBRARY": ".lby",
     "MEMCPY_FUNC": "brsmemcpy",
     "MEMSET_FUNC": "brsmemset", 
-    "STRLEN_FUNC": "brsstrcmp",
+    "STRLEN_FUNC": "brsstrlen",
     "PTR_ACCESS": " ACCESS ",
     "PTR_DEREF_START": "",
     "PTR_DEREF_END": "",

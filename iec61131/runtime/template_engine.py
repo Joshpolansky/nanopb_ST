@@ -12,6 +12,7 @@ import os
 import json
 import shutil
 from pathlib import Path
+from function_parser import FunctionProcessor
 
 
 class PlatformConfig:
@@ -38,23 +39,38 @@ class BRRuntimeConfig(PlatformConfig):
             "FILE_EXT_LIBRARY": ".lby",
             "MEMCPY_FUNC": "brsmemcpy",
             "MEMSET_FUNC": "brsmemset",
-            "STRLEN_FUNC": "brsstrcmp",
+            "STRLEN_FUNC": "brsstrlen",
             # Reference/Pointer handling for B&R
             "REF_ASSIGN": "ACCESS ADR",
             "REF_DEREF": "",
+            "REF_POINTER": "REFERENCE TO ",  # Note the trailing space
             "FIELD_PTR_ACCESS": " ACCESS ",
             "ADR_FUNC": "ADR",
-            "SCOPE_CONSTANT": "VAR_CONSTANT",
+            "PTR_TO_VOID": "UDINT",  # B&R uses UDINT for pointers
+            "SCOPE_CONSTANT": "VAR CONSTANT",
             "SCOPE_GLOBAL": "VAR",
             "SCOPE_LOCAL": "VAR",
             "TYPE_BYTE": "USINT",
             "TYPE_SIZE": "UINT",
             "TYPE_SSIZE": "INT",
             "TYPE_TYPE": "USINT",
+            # Data type tokens for function variables
+            "PB_UINT_TYPE": "UDINT",
+            "PB_INT_TYPE": "DINT", 
+            "PB_WIRE_TYPE": "USINT",
+            "PB_TAG_TYPE": "UINT",
+            "PB_FIELD_TYPE": "USINT",
+            "PB_64BIT_TYPE": "ULINT",
+            "PB_STRING_TYPE": "STRING[255]",
             "PLATFORM_NAME": "B&R",
             "PLATFORM_HEADER": "(* nanoPB Runtime Library for B&R Automation Studio *)",
             "PLATFORM_XML_HEADER": '<?AutomationStudio FileVersion="4.9"?>',
             "PLATFORM_DEPENDENCIES": '<Dependency ObjectName="AsBrStr" />',
+            # B&R uses .fun files for declarations - no vars in .st files
+            "PB_ENCODE_VARS": "",
+            "PB_DECODE_VARS": "",
+            "PB_ENCODE_FIELD_VARS": "",
+            "PB_DECODE_FIELD_VARS": "",
         }
 
 
@@ -88,6 +104,57 @@ class CodesysRuntimeConfig(PlatformConfig):
             "PLATFORM_HEADER": "(* nanoPB Runtime Library for Codesys *)",
             "PLATFORM_XML_HEADER": '<?xml version="1.0" encoding="utf-8"?>',
             "PLATFORM_DEPENDENCIES": "(* No special dependencies for Codesys *)",
+            # Function-specific declarations for Codesys - each function needs its own vars
+            "PB_ENCODE_VARS": """VAR_INPUT
+        stream : pb_ostream_struct;
+        fields : pb_msgdesc_struct;
+        src_struct : UDINT;
+    END_VAR
+    VAR
+        iter : pb_field_iter_struct;
+        iter_ref : REFERENCE TO pb_field_iter_struct;
+    END_VAR""",
+            "PB_DECODE_VARS": """VAR_INPUT
+        stream : pb_istream_struct;
+        fields : pb_msgdesc_struct;
+        dest_struct : UDINT;
+    END_VAR
+    VAR
+        tag : UDINT;
+        wire_type : pb_wire_type_t;
+        tag_value : pb_size_t;
+        iter : pb_field_iter_struct;
+        iter_ref : REFERENCE TO pb_field_iter_struct;
+        field_found : BOOL;
+    END_VAR""",
+            "PB_ENCODE_FIELD_VARS": """VAR_INPUT
+        stream : pb_ostream_struct;
+        field : pb_field_iter_struct;
+    END_VAR
+    VAR
+        field_type : USINT;
+        has_value : BOOL;
+        bool_ptr : REFERENCE TO BOOL;
+        int_ptr : REFERENCE TO DINT;
+        uint_ptr : REFERENCE TO UDINT;
+        real_ptr : REFERENCE TO REAL;
+        val_64 : REFERENCE TO pb_uint64_struct;
+        string_ptr : REFERENCE TO STRING[80];
+    END_VAR""",
+            "PB_DECODE_FIELD_VARS": """VAR_INPUT
+        stream : pb_istream_struct;
+        field : pb_field_iter_struct;
+        wire_type : pb_wire_type_t;
+    END_VAR
+    VAR
+        field_type : USINT;
+        temp_uint : UDINT;
+        bool_ptr : REFERENCE TO BOOL;
+        uint_ptr : REFERENCE TO UDINT;
+        int_ptr : REFERENCE TO DINT;
+        val_64 : REFERENCE TO pb_uint64_struct;
+        string_ptr : REFERENCE TO STRING[80];
+    END_VAR""",
         }
 
 
@@ -121,6 +188,57 @@ class TwinCATRuntimeConfig(PlatformConfig):
             "PLATFORM_HEADER": "(* nanoPB Runtime Library for TwinCAT *)",
             "PLATFORM_XML_HEADER": '<?xml version="1.0" encoding="utf-8"?>',
             "PLATFORM_DEPENDENCIES": "(* No special dependencies for TwinCAT *)",
+            # Function-specific declarations for TwinCAT - each function needs its own vars
+            "PB_ENCODE_VARS": """VAR_INPUT
+        stream : pb_ostream_struct;
+        fields : pb_msgdesc_struct;
+        src_struct : UDINT;
+    END_VAR
+    VAR
+        iter : pb_field_iter_struct;
+        iter_ref : REFERENCE TO pb_field_iter_struct;
+    END_VAR""",
+            "PB_DECODE_VARS": """VAR_INPUT
+        stream : pb_istream_struct;
+        fields : pb_msgdesc_struct;
+        dest_struct : UDINT;
+    END_VAR
+    VAR
+        tag : UDINT;
+        wire_type : pb_wire_type_t;
+        tag_value : pb_size_t;
+        iter : pb_field_iter_struct;
+        iter_ref : REFERENCE TO pb_field_iter_struct;
+        field_found : BOOL;
+    END_VAR""",
+            "PB_ENCODE_FIELD_VARS": """VAR_INPUT
+        stream : pb_ostream_struct;
+        field : pb_field_iter_struct;
+    END_VAR
+    VAR
+        field_type : BYTE;
+        has_value : BOOL;
+        bool_ptr : REFERENCE TO BOOL;
+        int_ptr : REFERENCE TO DINT;
+        uint_ptr : REFERENCE TO UDINT;
+        real_ptr : REFERENCE TO REAL;
+        val_64 : REFERENCE TO pb_uint64_struct;
+        string_ptr : REFERENCE TO STRING[80];
+    END_VAR""",
+            "PB_DECODE_FIELD_VARS": """VAR_INPUT
+        stream : pb_istream_struct;
+        field : pb_field_iter_struct;
+        wire_type : pb_wire_type_t;
+    END_VAR
+    VAR
+        field_type : BYTE;
+        temp_uint : UDINT;
+        bool_ptr : REFERENCE TO BOOL;
+        uint_ptr : REFERENCE TO UDINT;
+        int_ptr : REFERENCE TO DINT;
+        val_64 : REFERENCE TO pb_uint64_struct;
+        string_ptr : REFERENCE TO STRING[80];
+    END_VAR""",
         }
 
 
@@ -181,27 +299,84 @@ class RuntimeTemplateEngine:
         output_dir = self.output_base_dir / platform_name / "NanoPbSt"
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        # Initialize function processor for VAR section handling
+        processor = FunctionProcessor()
+
         # Process each template file
         template_files = self.get_template_files()
         generated_files = []
+        
+        # For B&R, collect all function declarations in a single .fun file
+        if platform_name.lower() == 'br':
+            consolidated_fun_content = []
+            consolidated_fun_content.append(tokens.get("PLATFORM_HEADER", ""))
+            consolidated_fun_content.append("(* nanoPB library function declarations for B&R Automation Studio *)")
+            consolidated_fun_content.append("")
 
         for template_file in template_files:
             # Read template content
             with open(template_file, "r", encoding="utf-8") as f:
                 template_content = f.read()
 
-            # Process content - replace all tokens
-            processed_content = self.process_file_content(template_content, tokens)
+            # Special handling for function templates (those containing {{FILE_EXT_CODE}})
+            if "{{FILE_EXT_CODE}}" in template_file.name:
+                print(f"   🔧 Processing function template: {template_file.name}")
+                
+                # For B&R platform, generate .st files and collect .fun content
+                if platform_name.lower() == 'br':
+                    # Generate .st file with VAR sections stripped
+                    st_content = processor.strip_var_sections(template_content)
+                    st_processed = self.process_file_content(st_content, tokens)
+                    
+                    # Add function declarations to consolidated .fun content
+                    fun_content = processor.generate_fun_from_template(template_content, tokens)
+                    # Extract just the function declarations (skip header)
+                    fun_lines = fun_content.split('\n')
+                    in_header = True
+                    for line in fun_lines:
+                        if line.strip().startswith('FUNCTION'):
+                            in_header = False
+                        if not in_header:
+                            consolidated_fun_content.append(line)
+                    
+                    # Write .st file only (no individual .fun file)
+                    st_filename = self.resolve_filename(template_file.name, tokens)
+                    st_path = output_dir / st_filename
+                    with open(st_path, "w", encoding="utf-8") as f:
+                        f.write(st_processed)
+                    generated_files.append(st_path)
+                    
+                else:
+                    # For Codesys/TwinCAT, use complete template with VAR sections
+                    processed_content = self.process_file_content(template_content, tokens)
+                    output_filename = self.resolve_filename(template_file.name, tokens)
+                    output_file_path = output_dir / output_filename
+                    
+                    with open(output_file_path, "w", encoding="utf-8") as f:
+                        f.write(processed_content)
+                    generated_files.append(output_file_path)
+                    
+            elif "{{FILE_EXT_FUNCTIONS}}" in template_file.name and platform_name.lower() == 'br':
+                # For B&R, skip the NanoPbSt.fun template - we'll generate our own consolidated version
+                continue
+                    
+            else:
+                # Regular template processing for non-function files
+                processed_content = self.process_file_content(template_content, tokens)
+                output_filename = self.resolve_filename(template_file.name, tokens)
+                output_file_path = output_dir / output_filename
 
-            # Resolve output filename
-            output_filename = self.resolve_filename(template_file.name, tokens)
-            output_file_path = output_dir / output_filename
+                with open(output_file_path, "w", encoding="utf-8") as f:
+                    f.write(processed_content)
+                generated_files.append(output_file_path)
 
-            # Write processed file
-            with open(output_file_path, "w", encoding="utf-8") as f:
-                f.write(processed_content)
-
-            generated_files.append(output_file_path)
+        # For B&R, write the consolidated .fun file (replacing the template-based one)
+        if platform_name.lower() == 'br':
+            consolidated_fun_processed = self.process_file_content('\n'.join(consolidated_fun_content), tokens)
+            fun_path = output_dir / "NanoPbSt.fun"
+            with open(fun_path, "w", encoding="utf-8") as f:
+                f.write(consolidated_fun_processed)
+            generated_files.append(fun_path)
 
         return generated_files
 

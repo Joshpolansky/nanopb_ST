@@ -63,4 +63,4 @@
 	(* Maximum encoded message size *)
 	SensorReading_size : {{TYPE_TYPE}} := 18;
 
-END_{{SCOPE_CONSTANT}}
+END_VAR

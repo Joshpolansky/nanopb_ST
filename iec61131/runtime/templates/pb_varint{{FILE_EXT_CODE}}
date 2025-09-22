@@ -2,8 +2,17 @@
 (* nanoPB varint encoding/decoding functions *)
 (* Ported from nanoPB C library to {{PLATFORM_NAME}} IEC 61131-3 ST *)
 
-FUNCTION pb_st_encode_varint
-	
+FUNCTION pb_st_encode_varint : BOOL (*Encode unsigned varint*)
+	VAR_INPUT
+		stream : pb_ostream_struct; (* Output stream *)
+		value : UDINT; (* Value to encode *)
+	END_VAR
+	VAR
+		buffer : ARRAY[0..9] OF pb_byte_t; (* Max 10 bytes for 64-bit varint *)
+		i : USINT;
+		bytes_written : USINT;
+	END_VAR
+
 	(* Encode varint using 7-bit encoding *)
 	i := 0;
 	
@@ -25,7 +34,16 @@ FUNCTION pb_st_encode_varint
 	
 END_FUNCTION
 
-FUNCTION pb_st_decode_varint
+FUNCTION pb_st_decode_varint : BOOL (*Decode unsigned varint*)
+	VAR_INPUT
+		stream : pb_istream_struct; (* Input stream *)
+		dest : REFERENCE TO UDINT; (* Destination for decoded value *)
+	END_VAR
+	VAR
+		byte_val : pb_byte_t;
+		bitpos : USINT;
+		result : UDINT;
+	END_VAR
 	
 	result := 0;
 	bitpos := 0;
@@ -60,7 +78,14 @@ FUNCTION pb_st_decode_varint
 	
 END_FUNCTION
 
-FUNCTION pb_st_encode_svarint
+FUNCTION pb_st_encode_svarint : BOOL (*Encode signed varint (zigzag)*)
+	VAR_INPUT
+		stream : pb_ostream_struct; (* Output stream *)
+		value : DINT; (* Signed value to encode *)
+	END_VAR
+	VAR
+		encoded : UDINT;
+	END_VAR
 	
 	(* ZigZag encode: (n << 1) ^ (n >> 31) *)
 	IF value >= 0 THEN
@@ -73,8 +98,15 @@ FUNCTION pb_st_encode_svarint
 	
 END_FUNCTION
 
-FUNCTION pb_st_decode_svarint
-	
+FUNCTION pb_st_decode_svarint : BOOL (*Decode signed varint (zigzag)*)
+	VAR_INPUT
+		stream : pb_istream_struct; (* Input stream *)
+		dest : REFERENCE TO DINT; (* Destination for decoded value *)
+	END_VAR
+	VAR
+		encoded : UDINT;
+	END_VAR	
+
 	IF NOT pb_st_decode_varint(stream, {{ADR_FUNC}}(encoded)) THEN
 		pb_st_decode_svarint := FALSE;
 		RETURN;

@@ -2,7 +2,12 @@
 (* nanoPB stream functions *)
 (* Ported from nanoPB C library to {{PLATFORM_NAME}} IEC 61131-3 ST *)
 
-FUNCTION pb_st_istream_from_buffer
+FUNCTION pb_st_istream_from_buffer : UDINT (*Create input stream from buffer - returns address*)
+	VAR_INPUT
+		stream : pb_istream_struct; (* Stream to initialize *)
+		buf : REFERENCE TO pb_byte_t; (* Buffer containing data *)
+		bufsize : pb_size_t; (* Size of buffer *)
+	END_VAR
 	
 	(* Initialize input stream from buffer *)
 	stream.state := {{ADR_FUNC}}(buf); (* Store buffer pointer in state *)
@@ -13,7 +18,12 @@ FUNCTION pb_st_istream_from_buffer
 	
 END_FUNCTION
 
-FUNCTION pb_st_ostream_from_buffer
+FUNCTION pb_st_ostream_from_buffer : UDINT (*Create output stream from buffer - returns address*)
+	VAR_INPUT
+		stream : pb_ostream_struct; (* Stream to initialize *)
+		buf : REFERENCE TO pb_byte_t; (* Buffer to write to *)
+		bufsize : pb_size_t; (* Size of buffer *)
+	END_VAR
 	
 	(* Initialize output stream from buffer *)
 	stream.state := {{ADR_FUNC}}(buf); (* Store buffer pointer in state *)
@@ -25,7 +35,17 @@ FUNCTION pb_st_ostream_from_buffer
 	
 END_FUNCTION
 
-FUNCTION pb_st_read
+FUNCTION pb_st_read : BOOL (*Read data from input stream*)
+	VAR_INPUT
+		stream : pb_istream_struct; (* Input stream *)
+		buf : UDINT; (* Buffer to read into *)
+		count : pb_size_t; (* Number of bytes to read *)
+	END_VAR
+	VAR
+		i : pb_size_t;
+		src_ptr : REFERENCE TO pb_byte_t;
+		dest_ptr : REFERENCE TO pb_byte_t;
+	END_VAR
 	
 	(* Check if we have enough bytes *)
 	IF stream.bytes_left < count THEN
@@ -49,7 +69,17 @@ FUNCTION pb_st_read
 	
 END_FUNCTION
 
-FUNCTION pb_st_write
+FUNCTION pb_st_write : BOOL (*Write data to output stream*)
+	VAR_INPUT
+		stream : pb_ostream_struct; (* Output stream *)
+		buf : UDINT; (* Buffer to write from *)
+		count : pb_size_t; (* Number of bytes to write *)
+	END_VAR
+	VAR
+		i : pb_size_t;
+		src_ptr : REFERENCE TO pb_byte_t;
+		dest_ptr : REFERENCE TO pb_byte_t;
+	END_VAR
 	
 	(* Check if we have enough space *)
 	IF stream.bytes_written + count > stream.max_size THEN
@@ -69,8 +99,15 @@ FUNCTION pb_st_write
 	
 END_FUNCTION
 
-FUNCTION pb_st_make_string_substream
-	
+FUNCTION pb_st_make_string_substream : BOOL (*Create substream for string/bytes*)
+	VAR_INPUT
+		stream : pb_istream_struct; (* Input stream *)
+		substream : pb_istream_struct; (* Substream to create *)
+	END_VAR
+	VAR
+		length : UDINT;
+	END_VAR
+
 	(* First decode the string length *)
 	IF NOT pb_st_decode_varint(stream, {{ADR_FUNC}}(length)) THEN
 		pb_st_make_string_substream := FALSE;
@@ -97,7 +134,11 @@ FUNCTION pb_st_make_string_substream
 	
 END_FUNCTION
 
-FUNCTION pb_st_close_string_substream
+FUNCTION pb_st_close_string_substream : BOOL (*Close string/bytes substream*)
+	VAR_INPUT
+		stream : pb_istream_struct; (* Original stream *)
+		substream : pb_istream_struct; (* Substream to close *)
+	END_VAR
 	
 	(* Skip any remaining bytes in substream *)
 	IF substream.bytes_left > 0 THEN

@@ -40,7 +40,7 @@ class BRRuntimeConfig(PlatformRuntimeConfig):
         self.memory_functions = {
             "memcpy": "brsmemcpy",
             "memset": "brsmemset",
-            "strlen": "brsstrcmp"
+            "strlen": "brsstrlen"
         }
         self.pointer_syntax = {
             "access_pattern": r"(\w+)\s+ACCESS\s+(.+)",

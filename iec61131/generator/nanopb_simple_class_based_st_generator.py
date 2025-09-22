@@ -75,7 +75,7 @@ class BRPlatformConfig(PlatformConfig):
         }
         self.file_structure = "multiple_types_per_file"
         self.scope_keywords = {
-            "global_constants": "VAR_CONSTANT",
+            "global_constants": "VAR CONSTANT",
             "global_variables": "VAR",  # Fixed: B&R uses VAR not VAR_GLOBAL in .var files
             "local_variables": "VAR",
         }

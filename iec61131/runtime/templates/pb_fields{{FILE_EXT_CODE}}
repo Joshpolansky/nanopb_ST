@@ -2,8 +2,17 @@
 (* nanoPB field encoding/decoding functions *)
 (* Ported from nanoPB C library to {{PLATFORM_NAME}} IEC 61131-3 ST *)
 
-FUNCTION pb_st_encode_tag_for_field
-	
+FUNCTION pb_st_encode_tag_for_field : BOOL (* Encode field tag and wire type *)
+	VAR_INPUT
+		stream : pb_ostream_struct; (* Output stream *)
+		field : pb_field_iter_struct; (* Field iterator *)
+	END_VAR
+	VAR
+		wire_type : USINT;
+		tag_and_type : UDINT;
+		length : UDINT;
+	END_VAR
+
 	(* Determine wire type based on field type *)
 	CASE (field.type AND PB_LTYPE_MASK) OF
 		PB_LTYPE_BOOL, PB_LTYPE_VARINT, PB_LTYPE_UVARINT, PB_LTYPE_SVARINT:
@@ -27,7 +36,14 @@ FUNCTION pb_st_encode_tag_for_field
 	
 END_FUNCTION
 
-FUNCTION pb_st_encode_fixed32
+FUNCTION pb_st_encode_fixed32 : BOOL (* Encode 32-bit fixed field *)
+	VAR_INPUT
+		stream : pb_ostream_struct; (* Output stream *)
+		value : UDINT; (* Value to encode *)
+	END_VAR
+	VAR
+		bytes : ARRAY[0..3] OF pb_byte_t;
+	END_VAR
 	
 	(* Encode as little-endian 32-bit *)
 	bytes[0] := UDINT_TO_{{TYPE_BYTE}}(value AND 16#FF);
@@ -39,7 +55,14 @@ FUNCTION pb_st_encode_fixed32
 	
 END_FUNCTION
 
-FUNCTION pb_st_decode_fixed32
+FUNCTION pb_st_decode_fixed32 : BOOL (* Decode 32-bit fixed field *)
+	VAR_INPUT
+		stream : pb_istream_struct; (* Input stream *)
+		dest : REFERENCE TO UDINT; (* Destination for value *)
+	END_VAR
+	VAR
+		bytes : ARRAY[0..3] OF pb_byte_t;
+	END_VAR
 	
 	IF NOT pb_st_read(stream, {{ADR_FUNC}}(bytes[0]), 4) THEN
 		pb_st_decode_fixed32 := FALSE;
@@ -56,8 +79,16 @@ FUNCTION pb_st_decode_fixed32
 	
 END_FUNCTION
 
-FUNCTION pb_st_encode_fixed64
-	
+FUNCTION pb_st_encode_fixed64 : BOOL (* Encode 64-bit fixed field *)
+	VAR_INPUT
+		stream : pb_ostream_struct; (* Output stream *)
+		value : pb_uint64_struct; (* Value to encode *)
+	END_VAR
+	VAR
+		bytes : ARRAY[0..7] OF pb_byte_t;
+		i : USINT;
+	END_VAR
+
 	(* Encode as little-endian 64-bit from structure *)
 	(* Encode lower 32 bits *)
 	FOR i := 0 TO 3 DO
@@ -73,8 +104,16 @@ FUNCTION pb_st_encode_fixed64
 	
 END_FUNCTION
 
-FUNCTION pb_st_decode_fixed64
-	
+FUNCTION pb_st_decode_fixed64 : BOOL (* Decode 64-bit fixed field *)
+	VAR_INPUT
+		stream : pb_istream_struct; (* Input stream *)
+		dest : REFERENCE TO pb_uint64_struct; (* Destination for value *)
+	END_VAR
+	VAR
+		bytes : ARRAY[0..7] OF pb_byte_t;
+		i : USINT;
+	END_VAR
+
 	IF NOT pb_st_read(stream, {{ADR_FUNC}}(bytes[0]), 8) THEN
 		pb_st_decode_fixed64 := FALSE;
 		RETURN;
@@ -98,7 +137,14 @@ FUNCTION pb_st_decode_fixed64
 	
 END_FUNCTION
 
-FUNCTION pb_st_encode_string
+FUNCTION pb_st_encode_string : BOOL (* Encode string field *)
+	VAR_INPUT
+		stream : pb_ostream_struct; (* Output stream *)
+		s : REFERENCE TO STRING[80]; (* String to encode *)
+	END_VAR
+	VAR
+		str_len : pb_size_t;
+	END_VAR
 	
 	str_len := UDINT_TO_{{TYPE_SIZE}}({{STRLEN_FUNC}}({{ADR_FUNC}}(s)));
 	
@@ -113,8 +159,17 @@ FUNCTION pb_st_encode_string
 	
 END_FUNCTION
 
-FUNCTION pb_st_decode_string
-	
+FUNCTION pb_st_decode_string : BOOL (* Decode string field *)
+	VAR_INPUT
+		stream : pb_istream_struct; (* Input stream *)
+		dest : REFERENCE TO STRING[80]; (* Destination string *)
+		size : pb_size_t; (* Maximum string size *)
+	END_VAR
+	VAR
+		str_len : UDINT;
+		temp_str : STRING[255];
+	END_VAR
+
 	(* First decode the string length *)
 	IF NOT pb_st_decode_varint(stream, {{ADR_FUNC}}(str_len)) THEN
 		pb_st_decode_string := FALSE;
@@ -143,7 +198,16 @@ FUNCTION pb_st_decode_string
 	
 END_FUNCTION
 
-FUNCTION pb_st_skip_field
+FUNCTION pb_st_skip_field : BOOL (* Skip unknown field based on wire type *)
+	VAR_INPUT
+		stream : pb_istream_struct; (* Input stream *)
+		wire_type : pb_wire_type_t; (* Wire type of field to skip *)
+	END_VAR
+	VAR
+		length : UDINT;
+		dummy_value : UDINT;
+		dummy_value64 : pb_uint64_struct;
+	END_VAR
 	
 	CASE wire_type OF
 		PB_WT_VARINT:

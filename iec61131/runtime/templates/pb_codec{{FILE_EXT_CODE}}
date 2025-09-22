@@ -2,7 +2,16 @@
 (* nanoPB main encode/decode functions *)
 (* Ported from nanoPB C library to {{PLATFORM_NAME}} IEC 61131-3 ST *)
 
-FUNCTION pb_st_encode
+FUNCTION pb_st_encode : BOOL (* Encode protobuf message *)
+	VAR_INPUT
+		stream : pb_ostream_struct; (* Output stream *)
+		fields : pb_msgdesc_struct; (* Message descriptor *)
+		src_struct : UDINT; (* Source message structure *)
+	END_VAR
+	VAR
+		iter : pb_field_iter_struct;
+		iter_ref : REFERENCE TO pb_field_iter_struct;
+	END_VAR
 	
 	iter_ref {{REF_ASSIGN}}(iter);
 	
@@ -24,12 +33,26 @@ FUNCTION pb_st_encode
 	
 END_FUNCTION
 
-FUNCTION pb_st_decode
-	
+FUNCTION pb_st_decode : BOOL (* Decode protobuf message *)
+	VAR_INPUT
+		stream : pb_istream_struct; (* Input stream *)
+		fields : pb_msgdesc_struct; (* Message descriptor *)
+		dest_struct : UDINT; (* Destination message structure *)
+	END_VAR
+	VAR
+		tag : UDINT;
+		wire_type : pb_wire_type_t;
+		tag_value : pb_size_t;
+		iter : pb_field_iter_struct;
+		iter_ref : REFERENCE TO pb_field_iter_struct;
+		field_found : BOOL;
+	END_VAR
+
 	iter_ref {{REF_ASSIGN}}(iter);
 	
 	(* Initialize message with default values *)
-	pb_st_init_default_values(fields, dest_struct);
+	(*TODO*)
+	//pb_st_init_default_values(fields, dest_struct);
 	
 	(* Decode fields until end of stream *)
 	WHILE stream.bytes_left > 0 DO
@@ -68,8 +91,22 @@ FUNCTION pb_st_decode
 	
 END_FUNCTION
 
-FUNCTION pb_st_encode_field
-	
+FUNCTION pb_st_encode_field : BOOL (* Encode single field value *)
+	VAR_INPUT
+		stream : pb_ostream_struct; (* Output stream *)
+		field : pb_field_iter_struct; (* Field iterator *)
+	END_VAR
+	VAR
+		field_type : USINT;
+		has_value : BOOL;
+		bool_ptr : REFERENCE TO BOOL;
+		int_ptr : REFERENCE TO DINT;
+		uint_ptr : REFERENCE TO UDINT;
+		real_ptr : REFERENCE TO REAL;
+		val_64 : REFERENCE TO pb_uint64_struct;
+		string_ptr : REFERENCE TO STRING[80];
+	END_VAR
+
 	field_type := field.type AND PB_LTYPE_MASK;
 	
 	(* Check if field has a value (for optional fields) *)
@@ -119,76 +156,91 @@ FUNCTION pb_st_encode_field
 			pb_st_encode_field := pb_st_encode_fixed64(stream, val_64{{REF_DEREF}});
 			
 		PB_LTYPE_STRING:
-			string_ptr {{FIELD_PTR_ACCESS}}field.pData;
-			pb_st_encode_field := pb_st_encode_string(stream, string_ptr{{REF_DEREF}});
+			pb_st_encode_field := pb_st_encode_string(stream, field.pData);
 			
 		ELSE
+			stream.errmsg := PB_ERR_INVALID_FIELD;
 			pb_st_encode_field := FALSE; (* Unsupported field type *)
 	END_CASE;
 	
 END_FUNCTION
 
-FUNCTION pb_st_decode_field
+FUNCTION pb_st_decode_field : BOOL (* Decode single field value *)
+	VAR_INPUT
+		stream : pb_istream_struct; (* Input stream *)
+		field : pb_field_iter_struct; (* Field iterator *)
+		wire_type : pb_wire_type_t; (* Wire type from tag *)
+	END_VAR
+	VAR
+		field_type : USINT;
+		expected_wire_type : pb_wire_type_t;
+		temp_uint : UDINT;
+		bool_ptr : REFERENCE TO BOOL;
+	END_VAR
+
 	
 	field_type := field.type AND PB_LTYPE_MASK;
-	
+
+	(* Determine expected wire type *)
+	CASE field_type OF
+		PB_LTYPE_BOOL, PB_LTYPE_VARINT, PB_LTYPE_UVARINT, PB_LTYPE_SVARINT:
+			expected_wire_type := PB_WT_VARINT;
+		PB_LTYPE_FIXED32:
+			expected_wire_type := PB_WT_32BIT;
+		PB_LTYPE_FIXED64:
+			expected_wire_type := PB_WT_64BIT;
+		PB_LTYPE_STRING, PB_LTYPE_BYTES:
+			expected_wire_type := PB_WT_STRING;
+	ELSE
+		stream.errmsg := PB_ERR_INVALID_FIELD;
+		pb_st_decode_field := FALSE;
+		RETURN;
+	END_CASE;
+
+	(* Check wire type matches *)
+	IF wire_type <> expected_wire_type THEN
+		stream.errmsg := PB_ERR_INVALID_WIRE_TYPE;
+		pb_st_decode_field := FALSE;
+		RETURN;
+	END_IF;
+
 	(* Decode field value based on type *)
 	CASE field_type OF
 		PB_LTYPE_BOOL:
-			bool_ptr {{FIELD_PTR_ACCESS}}field.pData;
-			IF wire_type = PB_WT_VARINT THEN
-				IF NOT pb_st_decode_varint(stream, {{ADR_FUNC}}(temp_value)) THEN
-					pb_st_decode_field := FALSE;
-					RETURN;
-				END_IF;
-				bool_ptr{{REF_DEREF}} := (temp_value <> 0);
+			IF pb_st_decode_varint(stream, ADR(temp_uint)) THEN
+				bool_ptr ACCESS field.pData;
+				bool_ptr := (temp_uint <> 0);
+				pb_st_decode_field := TRUE;
 			ELSE
-				pb_st_decode_field := FALSE; (* Wrong wire type for bool *)
-				RETURN;
+				pb_st_decode_field := FALSE;
 			END_IF;
 			
 		PB_LTYPE_VARINT, PB_LTYPE_UVARINT:
-			uint_ptr {{FIELD_PTR_ACCESS}}field.pData;
-			IF wire_type = PB_WT_VARINT THEN
-				pb_st_decode_field := pb_st_decode_varint(stream, {{ADR_FUNC}}(uint_ptr{{REF_DEREF}}));
-			ELSE
-				pb_st_decode_field := FALSE; (* Wrong wire type *)
-			END_IF;
+			pb_st_decode_field := pb_st_decode_varint(stream, field.pData);
 			
 		PB_LTYPE_SVARINT:
-			int_ptr {{FIELD_PTR_ACCESS}}field.pData;
-			IF wire_type = PB_WT_VARINT THEN
-				pb_st_decode_field := pb_st_decode_svarint(stream, {{ADR_FUNC}}(int_ptr{{REF_DEREF}}));
-			ELSE
-				pb_st_decode_field := FALSE; (* Wrong wire type *)
-			END_IF;
+			pb_st_decode_field := pb_st_decode_svarint(stream, field.pData);
 			
 		PB_LTYPE_FIXED32:
-			uint_ptr {{FIELD_PTR_ACCESS}}field.pData;
-			IF wire_type = PB_WT_32BIT THEN
-				pb_st_decode_field := pb_st_decode_fixed32(stream, {{ADR_FUNC}}(uint_ptr{{REF_DEREF}}));
-			ELSE
-				pb_st_decode_field := FALSE; (* Wrong wire type *)
-			END_IF;
+			pb_st_decode_field := pb_st_decode_fixed32(stream, field.pData);
 			
 		PB_LTYPE_FIXED64:
-			val_64 {{FIELD_PTR_ACCESS}}field.pData;
-			IF wire_type = PB_WT_64BIT THEN
-				pb_st_decode_field := pb_st_decode_fixed64(stream, {{ADR_FUNC}}(val_64{{REF_DEREF}}));
-			ELSE
-				pb_st_decode_field := FALSE; (* Wrong wire type *)
-			END_IF;
-			
+			pb_st_decode_field := pb_st_decode_fixed64(stream, field.pData);
+
 		PB_LTYPE_STRING:
-			string_ptr {{FIELD_PTR_ACCESS}}field.pData;
-			IF wire_type = PB_WT_STRING THEN
-				pb_st_decode_field := pb_st_decode_string(stream, string_ptr{{REF_DEREF}});
-			ELSE
-				pb_st_decode_field := FALSE; (* Wrong wire type *)
-			END_IF;
+			pb_st_decode_field := pb_st_decode_string(stream, field.pData, 255);
 			
-		ELSE
-			pb_st_decode_field := FALSE; (* Unsupported field type *)
+	ELSE
+		stream.errmsg := PB_ERR_INVALID_FIELD;
+		pb_st_decode_field := FALSE;
 	END_CASE;
+	
+	(* Set has_field flag for optional fields *)
+	IF pb_st_decode_field AND ((field.type AND PB_HTYPE_MASK) = PB_HTYPE_OPTIONAL) THEN
+		IF field.pSize <> 0 THEN
+			bool_ptr ACCESS field.pSize;
+			bool_ptr := TRUE;
+		END_IF;
+	END_IF;
 	
 END_FUNCTION

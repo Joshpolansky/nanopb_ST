@@ -303,9 +303,12 @@ FUNCTION pb_st_decode_field : BOOL (*Decode single field*) (*$GROUP=nanoPB,$CAT=
 	END_VAR
 	VAR
 		field_type : {{TYPE_TYPE}};
-		expected_wire_type : pb_wire_type_t;
 		temp_uint : UDINT;
 		bool_ptr : REFERENCE TO BOOL;
+		uint_ptr : REFERENCE TO UDINT;
+		int_ptr : REFERENCE TO DINT;
+		val_64 : REFERENCE TO pb_uint64_struct;
+		string_ptr : REFERENCE TO STRING[80];
 	END_VAR
 END_FUNCTION
 
