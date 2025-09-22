@@ -1,0 +1,25 @@
+(********************************************************************
+ * COPYRIGHT -- Bernecker + Rainer
+ ********************************************************************
+ * Program: NanoPB_Tests
+ * Author: GitHub Copilot
+ ********************************************************************
+ * Local variables for nanoPB library test suite
+ * General variables
+ ********************************************************************)
+VAR
+	Testsuite : UtMgrTestSuite := (Name:='NanoPB_Tests',Description:='Tests for nanoPB Protocol Buffer library',Type:=utMgrTEST_TYPE_C);
+	
+	(* Test data buffers - using basic ST types *)
+	test_buffer : ARRAY[0..255] OF USINT;
+	
+	(* Test variables for encoding/decoding - using basic ST types *)
+	test_value_uint32 : UDINT;
+	test_value_int32 : DINT;
+	test_string : STRING[50];
+	
+	(* Expected results - using basic ST types *)
+	expected_bytes : ARRAY[0..20] OF USINT;
+	expected_length : USINT;
+	
+END_VAR
