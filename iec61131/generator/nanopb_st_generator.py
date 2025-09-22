@@ -59,6 +59,7 @@ class PlatformConfig:
             "has_program_structure": True,
             "supports_adr_function": True,
             "requires_pragma_once": False,
+            "supports_reference_arrays": True,
         }
 
 
@@ -79,6 +80,8 @@ class BRPlatformConfig(PlatformConfig):
             "global_variables": "VAR",  # Fixed: B&R uses VAR not VAR_GLOBAL in .var files
             "local_variables": "VAR",
         }
+        # Override syntax options for B&R
+        self.syntax_options["supports_reference_arrays"] = False
 
 
 class CodesysPlatformConfig(PlatformConfig):
@@ -163,6 +166,15 @@ class STFieldWrapper:
     @property
     def st_type(self):
         """Get ST type using nanoPB's sophisticated type analysis"""
+        # Handle submessages specially
+        if self.field.pbtype == "MESSAGE":
+            # Get the submessage type name and convert to ST type name
+            if hasattr(self.field, 'submsgname') and self.field.submsgname:
+                return f"Proto{self.field.submsgname}"
+            else:
+                # Fallback - try to get from nanoPB's type analysis
+                return "DINT"  # Placeholder if we can't determine the type
+        
         base_type = self.ST_TYPE_MAP.get(self.field.pbtype, "DINT")
 
         # Handle string/bytes sizing using nanoPB's max_size
@@ -324,10 +336,11 @@ class STFieldWrapper:
 class STMessageWrapper:
     """Wrapper for nanoPB Message providing ST-specific methods"""
 
-    def __init__(self, nanopb_message):
+    def __init__(self, nanopb_message, platform_config=None):
         """Initialize with existing nanoPB Message object"""
         self.message = nanopb_message
         self.st_fields = [STFieldWrapper(field) for field in nanopb_message.fields]
+        self.platform_config = platform_config
 
     @property
     def st_struct_name(self):
@@ -354,7 +367,7 @@ class STMessageWrapper:
         return "\n".join(lines)
 
     def st_field_descriptors(self):
-        """Generate field descriptor array using nanoPB metadata"""
+        """Generate field descriptor arrays with proper nanoPB encoding initialized in VAR CONSTANT"""
         # Only include PLC-compatible fields
         compatible_fields = [f for f in self.st_fields if f.is_plc_compatible()]
 
@@ -366,31 +379,107 @@ class STMessageWrapper:
 
         lines = []
         msg_name = str(self.message.name)
-        lines.append(f"    (* {msg_name} enhanced field descriptors from nanoPB *)")
-        lines.append(
-            f"    {msg_name}_nanopb_fields : ARRAY[0..{len(compatible_fields)-1}] OF FIELD_DESCRIPTOR := ["
-        )
-
+        array_size = len(compatible_fields)
+        
+        # Add field information as comments before the array
+        lines.append(f"    (* {msg_name} field descriptors - initialized with nanoPB encoded values *)")
         for i, field in enumerate(compatible_fields):
-            is_last = i == len(compatible_fields) - 1
-            field_lines = field.st_field_descriptor(is_last)
-            lines.extend(field_lines)
-
+            type_bits = self._get_nanopb_type_bits(field.field)
+            lines.append(f"    (* Field[{i}]: {str(field.field.name)} - tag {field.field.tag}, type={type_bits} *)")
+        
+        lines.append(f"    {msg_name}_field_info : ARRAY[0..{array_size-1}] OF UDINT := [")
+        
+        # Generate the initialized values without inline comments
+        for i, field in enumerate(compatible_fields):
+            # nanoPB uses encoded UDINT format: [2-bit len][6-bit tag][8-bit type][remaining bits for offsets/sizes]
+            len_bits = 0  # 1-word format
+            tag_bits = min(field.field.tag, 63)  # 6 bits max
+            type_bits = self._get_nanopb_type_bits(field.field)  # 8 bits
+            
+            # Encode the first word
+            word0 = len_bits | (tag_bits << 2) | (type_bits << 8)
+            
+            comma = "," if i < len(compatible_fields) - 1 else ""
+            lines.append(f"        16#{word0:08X}{comma}")
+        
         lines.append("    ];")
+
         return lines
 
     def st_message_descriptor(self):
         """Generate message descriptor structure (for runtime initialization)"""
-        compatible_fields = [f for f in self.st_fields if f.is_plc_compatible()]
-        field_count = len(compatible_fields)
         msg_name = str(self.message.name)
 
         lines = []
         lines.append(
             f"    (* Message descriptor for {msg_name} - initialized at runtime *)"
         )
-        lines.append(f"    {msg_name}_descriptor : MESSAGE_DESCRIPTOR;")
+        lines.append(f"    {msg_name}_descriptor : pb_msgdesc_struct;")
         return lines
+
+    def st_submessage_info(self):
+        """Generate submessage info arrays for messages that have submessage fields"""
+        compatible_fields = [f for f in self.st_fields if f.is_plc_compatible()]
+        submessage_fields = [f for f in compatible_fields if f.field.pbtype == "MESSAGE"]
+        
+        if not submessage_fields:
+            return []  # No submessages in this message
+        
+        lines = []
+        msg_name = str(self.message.name)
+        
+        # Add field information as comments
+        lines.append(f"    (* {msg_name} submessage descriptors - references to other message descriptors *)")
+        for i, field in enumerate(submessage_fields):
+            submsg_name = getattr(field.field, 'submsgname', 'Unknown')
+            lines.append(f"    (* Submsg[{i}]: {str(field.field.name)} -> {submsg_name} *)")
+        
+        # Generate the submessage info array - use UDINT for B&R, REFERENCE TO for others
+        array_size = len(submessage_fields)
+        if self.platform_config and not self.platform_config.syntax_options.get("supports_reference_arrays", True):
+            # B&R doesn't support arrays of references, use UDINT
+            lines.append(f"    {msg_name}_submsg_info : ARRAY[0..{array_size-1}] OF UDINT;")
+        else:
+            # Other platforms support arrays of references  
+            lines.append(f"    {msg_name}_submsg_info : ARRAY[0..{array_size-1}] OF REFERENCE TO pb_msgdesc_struct;")
+        
+        return lines
+
+    def _get_nanopb_type_bits(self, field):
+        """Get nanoPB type bits for field encoding"""
+        # Map nanoPB field types to 8-bit type values
+        # Based on nanoPB pb.h type definitions
+        type_map = {
+            'VARINT': 0x00,
+            'SVARINT': 0x00,
+            'FIXED32': 0x01,
+            'FIXED64': 0x02,
+            'STRING': 0x03,
+            'BYTES': 0x04,
+            'SUBMESSAGE': 0x05,
+            'EXTENSION': 0x06,
+            'BOOL': 0x07,
+        }
+        
+        # Map protobuf types to nanoPB type bits
+        if field.pbtype == "BOOL":
+            return type_map['BOOL']
+        elif field.pbtype in ["INT32", "INT64", "UINT32", "UINT64", "ENUM"]:
+            return type_map['VARINT']
+        elif field.pbtype in ["SINT32", "SINT64"]:
+            return type_map['SVARINT']
+        elif field.pbtype in ["FIXED32", "SFIXED32", "FLOAT"]:
+            return type_map['FIXED32']
+        elif field.pbtype in ["FIXED64", "SFIXED64", "DOUBLE"]:
+            return type_map['FIXED64']
+        elif field.pbtype == "STRING":
+            return type_map['STRING']
+        elif field.pbtype == "BYTES":
+            return type_map['BYTES']
+        elif field.pbtype == "MESSAGE":
+            return type_map['SUBMESSAGE']
+        else:
+            return type_map['VARINT']  # Default fallback
 
 
 class STProtoFileWrapper:
@@ -399,8 +488,8 @@ class STProtoFileWrapper:
     def __init__(self, nanopb_proto_file, platform_config=None):
         """Initialize with existing nanoPB ProtoFile object and platform configuration"""
         self.proto_file = nanopb_proto_file
-        self.st_messages = [STMessageWrapper(msg) for msg in nanopb_proto_file.messages]
         self.platform_config = platform_config or get_platform_config("br")
+        self.st_messages = [STMessageWrapper(msg, self.platform_config) for msg in nanopb_proto_file.messages]
 
     def _get_st_ltype(self, field):
         """Get the ST ltype value for a field"""
@@ -502,33 +591,15 @@ class STProtoFileWrapper:
                 lines.append("")
                 msg_name = str(msg.message.name)
                 lines.append(f"    (* {msg_name} field tags - STATIC fields only *)")
+                lines.append("    (* Uncomment if you need individual field tag constants *)")
                 for field in compatible_fields:
                     field_const = f"{msg_name.upper()}_{field.field.name.upper()}_TAG"
-                    lines.append(f"    {field_const} : DINT := {field.field.tag};")
-
-        # Add global constant instances for offset calculations
-        lines.append("")
-        lines.append("    (* ========================================== *)")
-        lines.append("    (* MESSAGE INSTANCES - For offset calculations *)")
-        lines.append("    (* ========================================== *)")
-        lines.append(
-            "    (* Constant instances used by InitializeProtobufDescriptors *)"
-        )
-
-        for msg in self.st_messages:
-            compatible_fields = [f for f in msg.st_fields if f.is_plc_compatible()]
-            if compatible_fields:
-                msg_name = str(msg.message.name)
-                lines.append("")
-                lines.append(
-                    f"    (* Constant instance for {msg_name} field offset calculations *)"
-                )
-                lines.append(f"    {msg_name.upper()}_INSTANCE : {msg.st_struct_name};")
+                    lines.append(f"    (* {field_const} : DINT := {field.field.tag}; *)")
 
         # Enhanced field descriptor arrays using nanoPB metadata
         lines.append("")
         lines.append("    (* ========================================== *)")
-        lines.append("    (* ENHANCED FIELD DESCRIPTOR ARRAYS *)")
+        lines.append("    (* FIELD DESCRIPTOR ARRAYS *)")
         lines.append("    (* ========================================== *)")
         lines.append("    (* Generated using nanoPB class-based analysis *)")
 
@@ -555,6 +626,21 @@ class STProtoFileWrapper:
                 message_descriptor_lines = msg.st_message_descriptor()
                 lines.extend(message_descriptor_lines)
 
+        # Add submessage info arrays for messages with submessages
+        submsg_sections = []
+        for msg in self.st_messages:
+            submsg_lines = msg.st_submessage_info()
+            if submsg_lines:
+                submsg_sections.extend([""] + submsg_lines)
+        
+        if submsg_sections:
+            lines.append("")
+            lines.append("    (* ========================================== *)")
+            lines.append("    (* SUBMESSAGE DESCRIPTOR ARRAYS *)")
+            lines.append("    (* ========================================== *)")
+            lines.append("    (* Generated for messages containing submessage fields *)")
+            lines.extend(submsg_sections)
+
         lines.append("")
         lines.append("END_VAR")
         lines.append("")
@@ -577,23 +663,44 @@ class STProtoFileWrapper:
         lines.append("IF NOT initialized THEN")
         lines.append("")
 
-        # Initialize field descriptors with proper addressing - use arrays from .var file
-        lines.append("    (* Initialize field descriptors with runtime addressing *)")
-        for message in self.proto_file.messages:
-            msg_name = str(message.name)
-            lines.append(f"    (* Initialize {msg_name} field descriptors *)")
-
-            for i, field in enumerate(message.fields):
-                field_array = f"{msg_name}_nanopb_fields"
-
-                lines.append(f"    (* Field[{i}]: {msg_name}.{str(field.name)} *)")
-                lines.append(
-                    f"    {field_array}[{i}].data_offset := ADR({msg_name.upper()}_INSTANCE.{str(field.name)}) - ADR({msg_name.upper()}_INSTANCE);"
-                )
-                lines.append(
-                    f"    {field_array}[{i}].size_offset := 0; (* Static size *)"
-                )
-                lines.append("")
+        # Initialize message descriptors with proper nanoPB-compatible field info
+        lines.append("    (* Initialize message descriptors with runtime addressing *)")
+        for message in self.st_messages:
+            msg_name = str(message.message.name)
+            compatible_fields = [f for f in message.st_fields if f.is_plc_compatible()]
+            
+            lines.append(f"    (* Initialize {msg_name} message descriptor *)")
+            
+            # Set field info array reference
+            lines.append(f"    {msg_name}_descriptor.field_info := ADR({msg_name}_field_info);")
+            
+            # Set field count
+            lines.append(f"    {msg_name}_descriptor.field_count := {len(compatible_fields)};")
+            
+            # Set submsg_info - reference submessage descriptor array if this message has submessages
+            submessage_fields = [f for f in compatible_fields if f.field.pbtype == "MESSAGE"]
+            if submessage_fields:
+                lines.append(f"    {msg_name}_descriptor.submsg_info := ADR({msg_name}_submsg_info);")
+                # Initialize submessage info array with references to submessage descriptors  
+                for i, field in enumerate(submessage_fields):
+                    submsg_name = getattr(field.field, 'submsgname', 'Unknown')
+                    lines.append(f"    {msg_name}_submsg_info[{i}] := ADR({submsg_name}_descriptor);")
+            else:
+                lines.append(f"    {msg_name}_descriptor.submsg_info := 0;")
+                
+            # Set other descriptor fields to defaults for now
+            lines.append(f"    {msg_name}_descriptor.default_value := 0;")
+            lines.append(f"    {msg_name}_descriptor.callback := 0;")
+            lines.append(f"    {msg_name}_descriptor.required_field_count := {len(compatible_fields)};")
+            
+            # Calculate largest tag
+            if compatible_fields:
+                largest_tag = max(f.field.tag for f in compatible_fields)
+                lines.append(f"    {msg_name}_descriptor.largest_tag := {largest_tag};")
+            else:
+                lines.append(f"    {msg_name}_descriptor.largest_tag := 0;")
+            
+            lines.append("")
 
         lines.append("    initialized := TRUE;")
         lines.append("END_IF;")
@@ -602,6 +709,32 @@ class STProtoFileWrapper:
         lines.append("")
 
         return "\n".join(lines)
+
+    def _get_nanopb_type_bits(self, field):
+        """Get nanoPB type bits for field encoding"""
+        # Map nanoPB field types to 8-bit type values
+        # Based on nanoPB pb.h type definitions
+        type_map = {
+            'VARINT': 0x00,
+            'SVARINT': 0x00,
+            'FIXED32': 0x01,
+            'FIXED64': 0x02,
+            'STRING': 0x03,
+            'BYTES': 0x04,
+            'SUBMESSAGE': 0x05,
+            'EXTENSION': 0x06,
+            'BOOL': 0x07,
+            'ENUM': 0x00,    # Treated as VARINT
+            'INT32': 0x00,   # Treated as VARINT
+            'UINT32': 0x00,  # Treated as VARINT
+            'INT64': 0x00,   # Treated as VARINT
+            'UINT64': 0x00,  # Treated as VARINT
+            'FLOAT': 0x01,   # Treated as FIXED32
+            'DOUBLE': 0x02   # Treated as FIXED64
+        }
+        
+        field_type = getattr(field, 'pbtype', 'VARINT')
+        return type_map.get(field_type, 0x00)
 
 
 def generate_st_from_proto_simple_class_based(

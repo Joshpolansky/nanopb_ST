@@ -84,15 +84,3 @@ TYPE
 		bytes : ARRAY[0..0]OF pb_byte_t; (* Will be larger in practice *)
 	END_STRUCT;
 END_TYPE
-
-(* ===== SENSOR READING MESSAGE TYPES ===== *)
-(* Message structure matching the protobuf definition *)
-
-TYPE
-	SensorReading_struct : 	STRUCT 
-		sensor_id : DINT; (* required int32 sensor_id = 1; *)
-		temperature : REAL; (* required float temperature = 2; *)
-		has_alarm_active : BOOL; (* presence flag for optional field *)
-		alarm_active : BOOL; (* optional bool alarm_active = 3; *)
-	END_STRUCT;
-END_TYPE
