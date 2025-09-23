@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<?AutomationStudio FileVersion="4.9"?>
 <Library SubType="IEC" xmlns="http://br-automation.co.at/AS/Library">
-  <!-- {{PLATFORM_HEADER}} -->
   <Files>
     <File Description="Exported data types">Types{{FILE_EXT_TYPES}}</File>
     <File Description="Exported constants">Constants{{FILE_EXT_VARIABLES}}</File>
@@ -10,6 +10,7 @@
     <File>pb_fields{{FILE_EXT_CODE}}</File>
     <File>pb_iterator{{FILE_EXT_CODE}}</File>
     <File>pb_codec{{FILE_EXT_CODE}}</File>
+    <File>pb_common{{FILE_EXT_CODE}}</File>
   </Files>
   <Dependencies>
     {{PLATFORM_DEPENDENCIES}}
