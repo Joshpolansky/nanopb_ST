@@ -91,38 +91,196 @@ END_VAR
     safe_read_bool := FALSE;
 END_FUNCTION
 
-FUNCTION pb_encode_varint : BOOL (*Encode 32-bit varint - most common case*)
-VAR_INPUT
-    value : UDINT; (* uint32_t *)
-END_VAR
+(* TODO Encode array *)
+
+(* TODO pb_check_proto3_default_value? *)
+
+FUNCTION encode_basic_field : BOOL (*Encode basic field types*)
 VAR_IN_OUT
+    field : pb_field_iter_struct;
     stream : pb_ostream_struct;
-END_VAR    
-VAR
-    i : {{TYPE_SIZE}};
-    buffer : ARRAY[0..4] OF USINT;
-    byte : USINT;
 END_VAR
 
-    IF value <= 16#7F THEN
-        (* Fast path: single byte *)
-        byte := {{UDINT_TO_USINT}}(value);
-        pb_encode_varint := pb_write(ADR(byte), 1, stream);
+    IF field.pData = 0 THEN
+        (* Missing pointer field *)
+        encode_basic_field := TRUE;
         RETURN;
     END_IF;
 
-    i := 0;
-    WHILE value <> 0 DO
-        byte := {{UDINT_TO_USINT}}(value AND 16#7F);
-        value := SHR(value, 7);
-        IF value <> 0 THEN
-            byte := byte OR 16#80;
-        END_IF;
-        buffer[i] := byte;
-        i := i + 1;
-    END_WHILE;
+    IF NOT pb_encode_tag_for_field(field, stream) THEN
+        encode_basic_field := FALSE;
+        RETURN;
+    END_IF;
 
-    pb_encode_varint := pb_write(ADR(buffer), i, stream);
+    CASE PB_LTYPE(field.type) OF
+        PB_LTYPE_BOOL:
+            encode_basic_field := pb_enc_bool(field, stream);
+
+        PB_LTYPE_VARINT,
+        PB_LTYPE_UVARINT,
+        PB_LTYPE_SVARINT:
+            encode_basic_field := pb_enc_varint(field, stream);
+
+        PB_LTYPE_FIXED32,
+        PB_LTYPE_FIXED64:
+            encode_basic_field := pb_enc_fixed(field, stream);
+
+        PB_LTYPE_BYTES:
+            encode_basic_field := pb_enc_bytes(field, stream);
+
+        PB_LTYPE_STRING:
+            encode_basic_field := pb_enc_string(field, stream);
+
+        PB_LTYPE_SUBMESSAGE,
+        PB_LTYPE_SUBMSG_W_CB:
+            encode_basic_field := pb_enc_submessage(field, stream);
+
+        PB_LTYPE_FIXED_LENGTH_BYTES:
+            encode_basic_field := pb_enc_fixed_length_bytes(field, stream);
+        ELSE
+            encode_basic_field := FALSE;
+    END_CASE;
+END_FUNCTION
+
+FUNCTION encode_field : BOOL (*Encode single field*)
+VAR_IN_OUT
+    field : pb_field_iter_struct;
+    stream : pb_ostream_struct;
+END_VAR
+VAR
+    size_ptr : REFERENCE TO UDINT;
+END_VAR
+
+    (* Check field presence *)
+    IF PB_HTYPE(field.type) = PB_HTYPE_ONEOF THEN
+        size_ptr{{FIELD_PTR_ACCESS}}field.pSize;
+        IF size_ptr <> field.tag THEN
+            (* Different type oneof field *)
+            encode_field := TRUE;
+            RETURN;
+        END_IF;
+    ELSIF PB_HTYPE(field.type) = PB_HTYPE_OPTIONAL THEN
+        IF field.pSize <> 0 THEN
+            IF NOT safe_read_bool(field.pSize) THEN
+                (* Missing optional field *)
+                encode_field := TRUE;
+                RETURN;
+            END_IF;
+        ELSIF PB_ATYPE(field.type) = PB_ATYPE_STATIC THEN
+            (* Proto3 singular field - skip if default value *)
+            (* For simplicity, we'll encode all proto3 fields *)
+        END_IF;
+    END_IF;
+
+    IF field.pData = 0 THEN
+        IF PB_HTYPE(field.type) = PB_HTYPE_REQUIRED THEN
+            encode_field := FALSE; (* Missing required field *)
+            RETURN;
+        END_IF;
+        (* Pointer field set to NULL *)
+        encode_field := TRUE;
+        RETURN;
+    END_IF;
+
+    (* Encode field contents *)
+    IF PB_ATYPE(field.type) = PB_ATYPE_CALLBACK THEN
+        (* Callbacks not supported in ST version *)
+        encode_field := FALSE;
+    ELSIF PB_HTYPE(field.type) = PB_HTYPE_REPEATED THEN
+        (* TODO Support arrays *)
+        (* Arrays not fully supported in this simplified version *)
+        encode_field := encode_basic_field(field, stream);
+    ELSE
+        encode_field := encode_basic_field(field, stream);
+    END_IF;
+END_FUNCTION
+
+FUNCTION pb_encode : BOOL
+VAR_INPUT
+    fields : UDINT; (* const pb_msgdesc_t pointer *)
+    src_struct : UDINT; (* const void pointer *)
+END_VAR
+VAR_IN_OUT
+    stream : pb_ostream_struct;
+END_VAR
+VAR
+    iter : pb_field_iter_struct;
+    msgdesc : REFERENCE TO pb_msgdesc_struct;
+END_VAR
+
+    msgdesc{{FIELD_PTR_ACCESS}}fields;
+    IF NOT pb_field_iter_begin_const(iter, msgdesc, src_struct) THEN
+        pb_encode := TRUE; (* Empty message type *)
+        RETURN;
+    END_IF;
+    
+    REPEAT
+        IF PB_LTYPE(iter.type) = PB_LTYPE_EXTENSION THEN
+            (* Extension fields not supported in ST version *)
+            pb_encode := FALSE;
+            RETURN;
+        ELSE
+            (* Regular field *)
+            IF NOT encode_field(iter, stream) THEN
+                pb_encode := FALSE;
+                RETURN;
+            END_IF;
+        END_IF;
+    UNTIL NOT pb_field_iter_next(iter)
+    END_REPEAT;
+    
+    pb_encode := TRUE;
+END_FUNCTION
+
+FUNCTION pb_encode_ex : BOOL (*Extended encode with flags*)
+VAR_INPUT
+    fields : UDINT; (* const pb_msgdesc_t pointer *)
+    src_struct : UDINT; (* const void pointer *)
+    flags : UDINT;
+END_VAR
+VAR_IN_OUT
+    stream : pb_ostream_struct;
+END_VAR
+VAR
+    zero : USINT;
+END_VAR
+
+    IF (flags AND PB_ENCODE_DELIMITED) <> 0 THEN
+        pb_encode_ex := pb_encode_submessage(fields, src_struct, stream);
+    ELSIF (flags AND PB_ENCODE_NULLTERMINATED) <> 0 THEN
+        zero := 0;
+        IF NOT pb_encode(fields, src_struct, stream) THEN
+            pb_encode_ex := FALSE;
+            RETURN;
+        END_IF;
+        pb_encode_ex := pb_write(ADR(zero), 1, stream);
+    ELSE
+        pb_encode_ex := pb_encode(fields, src_struct, stream);
+    END_IF;
+END_FUNCTION
+
+FUNCTION pb_get_encoded_size : BOOL (*Get encoded message size*)
+VAR_INPUT
+    fields : UDINT; (* const pb_msgdesc_t pointer *)
+    src_struct : UDINT; (* const void pointer *)
+END_VAR
+VAR_IN_OUT
+    size : {{TYPE_SIZE}}; (* size_t pointer *)
+END_VAR
+VAR
+    stream : pb_ostream_struct;
+END_VAR
+
+    {{MEMSET_FUNC}}(ADR(stream), 0, SIZEOF(stream));
+    stream.max_size := {{SIZE_MAX_VALUE}};
+    
+    IF NOT pb_encode(fields, src_struct, stream) THEN
+        pb_get_encoded_size := FALSE;
+        RETURN;
+    END_IF;
+    
+    size := stream.bytes_written;
+    pb_get_encoded_size := TRUE;
 END_FUNCTION
 
 FUNCTION pb_encode_varint_64 : BOOL (*Encode 64-bit varint from low/high 32-bit parts*)
@@ -169,67 +327,6 @@ END_VAR
 
     pb_encode_varint_64 := pb_write(ADR(buffer), i, stream);
 END_FUNCTION
-
-FUNCTION pb_encode_svarint_32 : BOOL (*Encode signed 32-bit varint using zigzag*)
-VAR_INPUT
-    value : DINT; (* int32_t *)
-END_VAR
-VAR_IN_OUT
-    stream : pb_ostream_struct;
-END_VAR    
-VAR
-    zigzagged : UDINT;
-END_VAR
-
-    (* Zigzag encoding: (n << 1) ^ (n >> 31) *)
-    IF value < 0 THEN
-        zigzagged := NOT (SHL({{DINT_TO_UDINT}}(value), 1));
-    ELSE
-        zigzagged := SHL({{DINT_TO_UDINT}}(value), 1);
-    END_IF;
-    
-    pb_encode_svarint_32 := pb_encode_varint(zigzagged, stream);
-END_FUNCTION
-
-{{STRIP_NO64BIT_START}}
-FUNCTION pb_encode_svarint_64_compat : BOOL (*Encode signed 64-bit varint using zigzag - B&R compatibility*)
-VAR_INPUT
-    low : UDINT; (* low 32 bits *)
-    high : UDINT; (* high 32 bits *)
-END_VAR
-VAR_IN_OUT
-    stream : pb_ostream_struct;
-END_VAR    
-VAR
-    is_negative : BOOL;
-    zigzag_low : UDINT;
-    zigzag_high : UDINT;
-END_VAR
-
-    (* Check if negative (high bit of high part set) *)
-    is_negative := (high AND 16#80000000) <> 0;
-    
-    IF is_negative THEN
-        (* Zigzag encoding for negative: ~(n << 1) *)
-        zigzag_low := NOT (SHL(low, 1));
-        zigzag_high := NOT (SHL(high, 1));
-        (* Handle carry from low to high *)
-        IF (low AND 16#80000000) <> 0 THEN
-            zigzag_high := zigzag_high + 1;
-        END_IF;
-    ELSE
-        (* Zigzag encoding for positive: n << 1 *)
-        zigzag_low := SHL(low, 1);
-        zigzag_high := SHL(high, 1);
-        (* Handle carry from low to high *)
-        IF (low AND 16#80000000) <> 0 THEN
-            zigzag_high := zigzag_high + 1;
-        END_IF;
-    END_IF;
-    
-    pb_encode_svarint_64_compat := pb_encode_varint_64(zigzag_low, zigzag_high, stream);
-END_FUNCTION
-{{STRIP_NO64BIT_END}}
 
 {{STRIP_64BIT_START}}
 FUNCTION pb_encode_varint_native : BOOL (*Encode varint - Native 64-bit version*)
@@ -281,6 +378,29 @@ END_VAR
 END_FUNCTION
 {{STRIP_NO64BIT_END}}
 
+FUNCTION pb_encode_varint : BOOL (*Encode 32-bit varint - most common case*)
+VAR_INPUT
+    value : UDINT; (* uint32_t *)
+END_VAR
+VAR_IN_OUT
+    stream : pb_ostream_struct;
+END_VAR    
+VAR
+    i : {{TYPE_SIZE}};
+    buffer : ARRAY[0..4] OF USINT;
+    byte : USINT;
+END_VAR
+
+    IF value <= 16#7F THEN
+        (* Fast path: single byte *)
+        byte := {{UDINT_TO_USINT}}(value);
+        pb_encode_varint := pb_write(ADR(byte), 1, stream);
+        RETURN;
+    ELSE 
+        pb_encode_varint := pb_encode_varint_64(value, 0, stream);
+    END_IF;
+END_FUNCTION
+
 {{STRIP_64BIT_START}}
 FUNCTION pb_encode_svarint : BOOL (*Encode signed varint - Native 64-bit version*)
 VAR_INPUT
@@ -304,6 +424,67 @@ END_VAR
     pb_encode_svarint := pb_encode_varint_native(zigzagged, stream);
 END_FUNCTION
 {{STRIP_64BIT_END}}
+
+FUNCTION pb_encode_svarint_32 : BOOL (*Encode signed 32-bit varint using zigzag*)
+VAR_INPUT
+    value : DINT; (* int32_t *)
+END_VAR
+VAR_IN_OUT
+    stream : pb_ostream_struct;
+END_VAR    
+VAR
+    zigzagged : UDINT;
+END_VAR
+
+    (* Zigzag encoding: (n << 1) ^ (n >> 31) *)
+    IF value < 0 THEN
+        zigzagged := NOT (SHL({{DINT_TO_UDINT}}(value), 1));
+    ELSE
+        zigzagged := SHL({{DINT_TO_UDINT}}(value), 1);
+    END_IF;
+    
+    pb_encode_svarint_32 := pb_encode_varint(zigzagged, stream);
+END_FUNCTION
+
+{{STRIP_NO64BIT_START}}
+FUNCTION pb_encode_svarint_64_compat : BOOL (*Encode signed 64-bit varint using zigzag*)
+VAR_INPUT
+    low : UDINT; (* low 32 bits *)
+    high : UDINT; (* high 32 bits *)
+END_VAR
+VAR_IN_OUT
+    stream : pb_ostream_struct;
+END_VAR    
+VAR
+    is_negative : BOOL;
+    zigzag_low : UDINT;
+    zigzag_high : UDINT;
+END_VAR
+
+    (* Check if negative (high bit of high part set) *)
+    is_negative := (high AND 16#80000000) <> 0;
+    
+    IF is_negative THEN
+        (* Zigzag encoding for negative: ~(n << 1) *)
+        zigzag_low := NOT (SHL(low, 1));
+        zigzag_high := NOT (SHL(high, 1));
+        (* Handle carry from low to high *)
+        IF (low AND 16#80000000) <> 0 THEN
+            zigzag_high := zigzag_high + 1;
+        END_IF;
+    ELSE
+        (* Zigzag encoding for positive: n << 1 *)
+        zigzag_low := SHL(low, 1);
+        zigzag_high := SHL(high, 1);
+        (* Handle carry from low to high *)
+        IF (low AND 16#80000000) <> 0 THEN
+            zigzag_high := zigzag_high + 1;
+        END_IF;
+    END_IF;
+    
+    pb_encode_svarint_64_compat := pb_encode_varint_64(zigzag_low, zigzag_high, stream);
+END_FUNCTION
+{{STRIP_NO64BIT_END}}
 
 {{STRIP_NO64BIT_START}}
 FUNCTION pb_encode_svarint : BOOL (*Encode signed varint - 32-bit compatibility version*)
@@ -454,26 +635,22 @@ VAR
 END_VAR
 
     CASE PB_LTYPE(field.type) OF
-        PB_LTYPE_BOOL:
-            wiretype := PB_WT_VARINT;
-        PB_LTYPE_VARINT:
-            wiretype := PB_WT_VARINT;
-        PB_LTYPE_UVARINT:
-            wiretype := PB_WT_VARINT;
+        PB_LTYPE_BOOL,
+        PB_LTYPE_VARINT,
+        PB_LTYPE_UVARINT,
         PB_LTYPE_SVARINT:
             wiretype := PB_WT_VARINT;
+
         PB_LTYPE_FIXED32:
             wiretype := PB_WT_32BIT;
+
         PB_LTYPE_FIXED64:
             wiretype := PB_WT_64BIT;
-        PB_LTYPE_BYTES:
-            wiretype := PB_WT_STRING;
-        PB_LTYPE_STRING:
-            wiretype := PB_WT_STRING;
-        PB_LTYPE_SUBMESSAGE:
-            wiretype := PB_WT_STRING;
-        PB_LTYPE_SUBMSG_W_CB:
-            wiretype := PB_WT_STRING;
+
+        PB_LTYPE_BYTES,
+        PB_LTYPE_STRING,
+        PB_LTYPE_SUBMESSAGE,
+        PB_LTYPE_SUBMSG_W_CB,
         PB_LTYPE_FIXED_LENGTH_BYTES:
             wiretype := PB_WT_STRING;
         ELSE
@@ -512,7 +689,6 @@ END_VAR
 VAR
     substream : pb_ostream_struct;
     msgdesc : REFERENCE TO pb_msgdesc_struct;
-    size : {{UINT64_TYPE}};
 END_VAR
 
     (* First calculate the message size using a non-writing substream *)
@@ -520,7 +696,7 @@ END_VAR
     substream.max_size := {{SIZE_MAX_VALUE}};
     
     msgdesc{{FIELD_PTR_ACCESS}}fields;
-    IF NOT pb_encode_inner(fields, src_struct, substream) THEN
+    IF NOT pb_encode(fields, src_struct, substream) THEN
         pb_encode_submessage := FALSE;
         RETURN;
     END_IF;
@@ -540,7 +716,7 @@ END_VAR
         RETURN;
     END_IF;
         
-    pb_encode_submessage := pb_encode_inner(fields, src_struct, stream);
+    pb_encode_submessage := pb_encode(fields, src_struct, stream);
 END_FUNCTION
 
 FUNCTION pb_enc_bool : BOOL (*Internal bool encoder*)
@@ -768,201 +944,4 @@ VAR_IN_OUT
 END_VAR
 
     pb_enc_fixed_length_bytes := pb_encode_string(field.pData, field.data_size, stream);
-END_FUNCTION
-
-FUNCTION encode_basic_field : BOOL (*Encode basic field types*)
-VAR_IN_OUT
-    field : pb_field_iter_struct;
-    stream : pb_ostream_struct;
-END_VAR
-
-    IF field.pData = 0 THEN
-        (* Missing pointer field *)
-        encode_basic_field := TRUE;
-        RETURN;
-    END_IF;
-
-    IF NOT pb_encode_tag_for_field(field, stream) THEN
-        encode_basic_field := FALSE;
-        RETURN;
-    END_IF;
-
-    CASE PB_LTYPE(field.type) OF
-        PB_LTYPE_BOOL:
-            encode_basic_field := pb_enc_bool(field, stream);
-        PB_LTYPE_VARINT:
-            encode_basic_field := pb_enc_varint(field, stream);
-        PB_LTYPE_UVARINT:
-            encode_basic_field := pb_enc_varint(field, stream);
-        PB_LTYPE_SVARINT:
-            encode_basic_field := pb_enc_varint(field, stream);
-        PB_LTYPE_FIXED32:
-            encode_basic_field := pb_enc_fixed(field, stream);
-        PB_LTYPE_FIXED64:
-            encode_basic_field := pb_enc_fixed(field, stream);
-        PB_LTYPE_BYTES:
-            encode_basic_field := pb_enc_bytes(field, stream);
-        PB_LTYPE_STRING:
-            encode_basic_field := pb_enc_string(field, stream);
-        PB_LTYPE_SUBMESSAGE:
-            encode_basic_field := pb_enc_submessage(field, stream);
-        PB_LTYPE_SUBMSG_W_CB:
-            encode_basic_field := pb_enc_submessage(field, stream);
-        PB_LTYPE_FIXED_LENGTH_BYTES:
-            encode_basic_field := pb_enc_fixed_length_bytes(field, stream);
-        ELSE
-            encode_basic_field := FALSE;
-    END_CASE;
-END_FUNCTION
-
-FUNCTION encode_field : BOOL (*Encode single field*)
-VAR_IN_OUT
-    field : pb_field_iter_struct;
-    stream : pb_ostream_struct;
-END_VAR
-VAR
-    size_ptr : REFERENCE TO UDINT;
-END_VAR
-
-    (* Check field presence *)
-    IF PB_HTYPE(field.type) = PB_HTYPE_ONEOF THEN
-        size_ptr{{FIELD_PTR_ACCESS}}field.pSize;
-        IF size_ptr <> field.tag THEN
-            (* Different type oneof field *)
-            encode_field := TRUE;
-            RETURN;
-        END_IF;
-    ELSIF PB_HTYPE(field.type) = PB_HTYPE_OPTIONAL THEN
-        IF field.pSize <> 0 THEN
-            IF NOT safe_read_bool(field.pSize) THEN
-                (* Missing optional field *)
-                encode_field := TRUE;
-                RETURN;
-            END_IF;
-        ELSIF PB_ATYPE(field.type) = PB_ATYPE_STATIC THEN
-            (* Proto3 singular field - skip if default value *)
-            (* For simplicity, we'll encode all proto3 fields *)
-        END_IF;
-    END_IF;
-
-    IF field.pData = 0 THEN
-        IF PB_HTYPE(field.type) = PB_HTYPE_REQUIRED THEN
-            encode_field := FALSE; (* Missing required field *)
-            RETURN;
-        END_IF;
-        (* Pointer field set to NULL *)
-        encode_field := TRUE;
-        RETURN;
-    END_IF;
-
-    (* Encode field contents *)
-    IF PB_ATYPE(field.type) = PB_ATYPE_CALLBACK THEN
-        (* Callbacks not supported in ST version *)
-        encode_field := FALSE;
-    ELSIF PB_HTYPE(field.type) = PB_HTYPE_REPEATED THEN
-        (* Arrays not fully supported in this simplified version *)
-        encode_field := encode_basic_field(field, stream);
-    ELSE
-        encode_field := encode_basic_field(field, stream);
-    END_IF;
-END_FUNCTION
-
-FUNCTION pb_encode_inner : BOOL (*Internal encode implementation*)
-VAR_INPUT
-    fields : UDINT; (* const pb_msgdesc_t pointer *)
-    src_struct : UDINT; (* const void pointer *)
-END_VAR
-VAR_IN_OUT
-    stream : pb_ostream_struct;
-END_VAR
-VAR
-    iter : pb_field_iter_struct;
-    msgdesc : REFERENCE TO pb_msgdesc_struct;
-END_VAR
-
-    msgdesc{{FIELD_PTR_ACCESS}}fields;
-    IF NOT pb_field_iter_begin_const(iter, msgdesc, src_struct) THEN
-        pb_encode_inner := TRUE; (* Empty message type *)
-        RETURN;
-    END_IF;
-    
-    REPEAT
-        IF PB_LTYPE(iter.type) = PB_LTYPE_EXTENSION THEN
-            (* Extension fields not supported in ST version *)
-            pb_encode_inner := FALSE;
-            RETURN;
-        ELSE
-            (* Regular field *)
-            IF NOT encode_field(iter, stream) THEN
-                pb_encode_inner := FALSE;
-                RETURN;
-            END_IF;
-        END_IF;
-    UNTIL NOT pb_field_iter_next(iter)
-    END_REPEAT;
-    
-    pb_encode_inner := TRUE;
-END_FUNCTION
-
-FUNCTION pb_encode : BOOL (*Main encode function*)
-VAR_INPUT
-    fields : UDINT; (* const pb_msgdesc_t pointer *)
-    src_struct : UDINT; (* const void pointer *)
-END_VAR
-VAR_IN_OUT
-    stream : pb_ostream_struct;
-END_VAR
-
-    pb_encode := pb_encode_inner(fields, src_struct, stream);
-END_FUNCTION
-
-FUNCTION pb_encode_ex : BOOL (*Extended encode with flags*)
-VAR_INPUT
-    fields : UDINT; (* const pb_msgdesc_t pointer *)
-    src_struct : UDINT; (* const void pointer *)
-    flags : UDINT;
-END_VAR
-VAR_IN_OUT
-    stream : pb_ostream_struct;
-END_VAR
-VAR
-    zero : USINT;
-END_VAR
-
-    IF (flags AND PB_ENCODE_DELIMITED) <> 0 THEN
-        pb_encode_ex := pb_encode_submessage(fields, src_struct, stream);
-    ELSIF (flags AND PB_ENCODE_NULLTERMINATED) <> 0 THEN
-        zero := 0;
-        IF NOT pb_encode(fields, src_struct, stream) THEN
-            pb_encode_ex := FALSE;
-            RETURN;
-        END_IF;
-        pb_encode_ex := pb_write(ADR(zero), 1, stream);
-    ELSE
-        pb_encode_ex := pb_encode(fields, src_struct, stream);
-    END_IF;
-END_FUNCTION
-
-FUNCTION pb_get_encoded_size : BOOL (*Get encoded message size*)
-VAR_INPUT
-    fields : UDINT; (* const pb_msgdesc_t pointer *)
-    src_struct : UDINT; (* const void pointer *)
-END_VAR
-VAR_IN_OUT
-    size : {{TYPE_SIZE}}; (* size_t pointer *)
-END_VAR
-VAR
-    stream : pb_ostream_struct;
-END_VAR
-
-    {{MEMSET_FUNC}}(ADR(stream), 0, SIZEOF(stream));
-    stream.max_size := {{SIZE_MAX_VALUE}};
-    
-    IF NOT pb_encode(fields, src_struct, stream) THEN
-        pb_get_encoded_size := FALSE;
-        RETURN;
-    END_IF;
-    
-    size := stream.bytes_written;
-    pb_get_encoded_size := TRUE;
 END_FUNCTION
