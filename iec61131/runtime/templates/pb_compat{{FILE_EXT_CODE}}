@@ -1,0 +1,135 @@
+{{PLATFORM_HEADER}}
+(* nanoPB compatibility functions for B&R platform *)
+(* These functions provide 64-bit compatibility using 32-bit arrays *)
+
+FUNCTION UDINT_TO_ARRAY_COMPAT : BOOL (*Convert UDINT to 64-bit array*)
+VAR_INPUT
+    value : UDINT;
+END_VAR
+VAR_IN_OUT
+    result : ARRAY[0..1] OF UDINT;
+END_VAR
+
+    result[0] := value;
+    result[1] := 0;
+    UDINT_TO_ARRAY_COMPAT := TRUE;
+END_FUNCTION
+
+FUNCTION UINT_TO_ARRAY_COMPAT : BOOL (*Convert UINT to 64-bit array*)
+VAR_INPUT
+    value : UINT;
+END_VAR
+VAR_IN_OUT
+    result : ARRAY[0..1] OF UDINT;
+END_VAR
+
+    result[0] := {{UINT_TO_UDINT}}(value);
+    result[1] := 0;
+    UINT_TO_ARRAY_COMPAT := TRUE;
+END_FUNCTION
+
+FUNCTION USINT_TO_ARRAY_COMPAT : BOOL (*Convert USINT to 64-bit array*)
+VAR_INPUT
+    value : USINT;
+END_VAR
+VAR_IN_OUT
+    result : ARRAY[0..1] OF UDINT;
+END_VAR
+
+    result[0] := {{USINT_TO_UDINT}}(value);
+    result[1] := 0;
+    USINT_TO_ARRAY_COMPAT := TRUE;
+END_FUNCTION
+
+FUNCTION DINT_TO_ARRAY_COMPAT : BOOL (*Convert DINT to signed 64-bit array*)
+VAR_INPUT
+    value : DINT;
+END_VAR
+VAR_IN_OUT
+    result : ARRAY[0..1] OF DINT;
+END_VAR
+
+    result[0] := value;
+    IF value < 0 THEN
+        result[1] := -1; (* Sign extension *)
+    ELSE
+        result[1] := 0;
+    END_IF;
+    DINT_TO_ARRAY_COMPAT := TRUE;
+END_FUNCTION
+
+FUNCTION INT_TO_ARRAY_COMPAT : BOOL (*Convert INT to signed 64-bit array*)
+VAR_INPUT
+    value : INT;
+END_VAR
+VAR_IN_OUT
+    result : ARRAY[0..1] OF DINT;
+END_VAR
+
+    result[0] := {{INT_TO_DINT}}(value);
+    IF value < 0 THEN
+        result[1] := -1; (* Sign extension *)
+    ELSE
+        result[1] := 0;
+    END_IF;
+    INT_TO_ARRAY_COMPAT := TRUE;
+END_FUNCTION
+
+FUNCTION SINT_TO_ARRAY_COMPAT : BOOL (*Convert SINT to signed 64-bit array*)
+VAR_INPUT
+    value : SINT;
+END_VAR
+VAR_IN_OUT
+    result : ARRAY[0..1] OF DINT;
+END_VAR
+
+    result[0] := {{SINT_TO_DINT}}(value);
+    IF value < 0 THEN
+        result[1] := -1; (* Sign extension *)
+    ELSE
+        result[1] := 0;
+    END_IF;
+    SINT_TO_ARRAY_COMPAT := TRUE;
+END_FUNCTION
+
+FUNCTION ARRAY_TO_UDINT_COMPAT : UDINT (*Extract low 32-bits from 64-bit array*)
+VAR_INPUT
+    value : ARRAY[0..1] OF UDINT;
+END_VAR
+
+    ARRAY_TO_UDINT_COMPAT := value[0];
+END_FUNCTION
+
+FUNCTION ARRAY_TO_USINT_COMPAT : USINT (*Extract low 8-bits from 64-bit array*)
+VAR_INPUT
+    value : ARRAY[0..1] OF UDINT;
+END_VAR
+
+    ARRAY_TO_USINT_COMPAT := {{UDINT_TO_USINT}}(value[0]);
+END_FUNCTION
+
+FUNCTION LINT_TO_ULINT_COMPAT : BOOL (*Convert signed to unsigned 64-bit array*)
+VAR_INPUT
+    value : ARRAY[0..1] OF DINT;
+END_VAR
+VAR_IN_OUT
+    result : ARRAY[0..1] OF UDINT;
+END_VAR
+
+    result[0] := {{DINT_TO_UDINT}}(value[0]);
+    result[1] := {{DINT_TO_UDINT}}(value[1]);
+    LINT_TO_ULINT_COMPAT := TRUE;
+END_FUNCTION
+
+FUNCTION ULINT_TO_LINT_COMPAT : BOOL (*Convert unsigned to signed 64-bit array*)
+VAR_INPUT
+    value : ARRAY[0..1] OF UDINT;
+END_VAR
+VAR_IN_OUT
+    result : ARRAY[0..1] OF DINT;
+END_VAR
+
+    result[0] := {{UDINT_TO_DINT}}(value[0]);
+    result[1] := {{UDINT_TO_DINT}}(value[1]);
+    ULINT_TO_LINT_COMPAT := TRUE;
+END_FUNCTION

@@ -53,14 +53,7 @@
 	PB_ERR_EOF : STRING[30] := 'End of stream';
 	PB_ERR_BUFFER_OVERFLOW : STRING[30] := 'Buffer overflow';
 	
-	(* ===== SENSOR READING MESSAGE CONSTANTS ===== *)
-	
-	(* Field tags *)
-	SensorReading_sensor_id_tag : {{TYPE_TYPE}} := 1;
-	SensorReading_temperature_tag : {{TYPE_TYPE}} := 2;
-	SensorReading_alarm_active_tag : {{TYPE_TYPE}} := 3;
-	
-	(* Maximum encoded message size *)
-	SensorReading_size : {{TYPE_TYPE}} := 18;
+	PB_ENCODE_DELIMITED : {{TYPE_TYPE}} := 16#01;
+	PB_ENCODE_NULLTERMINATED : {{TYPE_TYPE}} := 16#02;
 
 END_VAR

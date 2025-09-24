@@ -71,6 +71,47 @@ class BRRuntimeConfig(PlatformConfig):
             "PB_DECODE_VARS": "",
             "PB_ENCODE_FIELD_VARS": "",
             "PB_DECODE_FIELD_VARS": "",
+            # Type Conversions
+            "UDINT_TO_UINT": "UDINT_TO_UINT",
+            "UDINT_TO_USINT": "UDINT_TO_USINT",
+            "UDINT_TO_SINT": "UDINT_TO_SINT",
+            "UDINT_TO_BYTE": "UDINT_TO_BYTE",
+            "UINT_TO_UDINT": "UINT_TO_UDINT",
+            "UINT_TO_USINT": "UINT_TO_USINT",
+            "USINT_TO_UDINT": "USINT_TO_UDINT",
+            "SINT_TO_UDINT": "SINT_TO_UDINT",
+            "DINT_TO_USINT": "DINT_TO_USINT",
+            "ULINT_TO_USINT": "ARRAY_TO_USINT_COMPAT",
+            "UDINT_TO_ULINT": "UDINT_TO_ARRAY_COMPAT", 
+            "UINT_TO_ULINT": "UINT_TO_ARRAY_COMPAT",
+            "USINT_TO_ULINT": "USINT_TO_ARRAY_COMPAT",
+            "LINT_TO_ULINT": "LINT_TO_ULINT_COMPAT",
+            "DINT_TO_UDINT": "DINT_TO_UDINT",
+            "ULINT_TO_LINT": "ULINT_TO_LINT_COMPAT",
+            "ULINT_TO_UDINT": "ARRAY_TO_UDINT_COMPAT",
+            "SINT_TO_LINT": "SINT_TO_ARRAY_COMPAT",
+            "INT_TO_LINT": "INT_TO_ARRAY_COMPAT", 
+            "DINT_TO_LINT": "DINT_TO_ARRAY_COMPAT",
+            "BOOL_TO_UDINT": "BOOL_TO_UDINT",
+            "INT_TO_DINT": "INT_TO_DINT",
+            "SINT_TO_DINT": "SINT_TO_DINT",
+            "UDINT_TO_DINT": "UDINT_TO_DINT",
+            # 64-bit type support - B&R does NOT support LINT/ULINT
+            "SUPPORTS_64BIT": "FALSE",
+            "INT64_TYPE": "ARRAY[0..1] OF DINT",  # Simulate 64-bit with array
+            "UINT64_TYPE": "ARRAY[0..1] OF UDINT",  # Simulate 64-bit with array
+            "UDINT_MAX_VALUE": "16#FFFFFFFF",
+            "UINT_MAX_VALUE": "16#FFFF",  # Max value for UINT (16-bit)
+            "SIZE_MAX_VALUE": "16#FFFF",  # For size_t fields (UINT in B&R)
+            "PB_ENCODE_DELIMITED": "1",
+            "PB_ENCODE_NULLTERMINATED": "2",
+            "INT64_TO_UINT64": "LINT_TO_ULINT_COMPAT",
+            "UINT64_TO_INT64": "ULINT_TO_LINT_COMPAT",
+            # Section stripping tokens for conditional compilation
+            "STRIP_64BIT_START": "{{STRIP_START}}",
+            "STRIP_64BIT_END": "{{STRIP_END}}",
+            "STRIP_NO64BIT_START": "",
+            "STRIP_NO64BIT_END": "",
         }
 
 
@@ -155,6 +196,37 @@ class CodesysRuntimeConfig(PlatformConfig):
         val_64 : REFERENCE TO pb_uint64_struct;
         string_ptr : REFERENCE TO STRING[80];
     END_VAR""",
+            # Type Conversions - Codesys
+            "UDINT_TO_UINT": "UDINT_TO_UINT",
+            "UDINT_TO_USINT": "UDINT_TO_USINT",
+            "UDINT_TO_SINT": "UDINT_TO_SINT",
+            "UDINT_TO_BYTE": "UDINT_TO_USINT",
+            "UINT_TO_UDINT": "UINT_TO_UDINT",
+            "UINT_TO_USINT": "UINT_TO_USINT",
+            "USINT_TO_UDINT": "USINT_TO_UDINT",
+            "SINT_TO_UDINT": "SINT_TO_UDINT",
+            "ULINT_TO_USINT": "ULINT_TO_USINT",
+            "UDINT_TO_ULINT": "UDINT_TO_ULINT",
+            "UINT_TO_ULINT": "UINT_TO_ULINT",
+            "USINT_TO_ULINT": "USINT_TO_ULINT",
+            "LINT_TO_ULINT": "LINT_TO_ULINT",
+            "ULINT_TO_LINT": "ULINT_TO_LINT",
+            "ULINT_TO_UDINT": "ULINT_TO_UDINT",
+            "SINT_TO_LINT": "SINT_TO_LINT",
+            "INT_TO_LINT": "INT_TO_LINT",
+            "DINT_TO_LINT": "DINT_TO_LINT",
+            # 64-bit type support - Codesys supports LINT/ULINT
+            "SUPPORTS_64BIT": "TRUE",
+            "INT64_TYPE": "LINT",
+            "UINT64_TYPE": "ULINT",
+            "UDINT_MAX_VALUE": "16#FFFFFFFF",
+            "INT64_TO_UINT64": "LINT_TO_ULINT",
+            "UINT64_TO_INT64": "ULINT_TO_LINT",
+            # Section stripping tokens for conditional compilation
+            "STRIP_64BIT_START": "",
+            "STRIP_64BIT_END": "",
+            "STRIP_NO64BIT_START": "{{STRIP_START}}",
+            "STRIP_NO64BIT_END": "{{STRIP_END}}",
         }
 
 
@@ -239,6 +311,42 @@ class TwinCATRuntimeConfig(PlatformConfig):
         val_64 : REFERENCE TO pb_uint64_struct;
         string_ptr : REFERENCE TO STRING[80];
     END_VAR""",
+            # Type Conversions - TwinCAT
+            "UDINT_TO_UINT": "UDINT_TO_UINT",
+            "UDINT_TO_USINT": "UDINT_TO_USINT",
+            "UDINT_TO_SINT": "UDINT_TO_SINT",
+            "UDINT_TO_BYTE": "UDINT_TO_BYTE",
+            "UINT_TO_UDINT": "UINT_TO_UDINT",
+            "UINT_TO_USINT": "UINT_TO_USINT",
+            "USINT_TO_UDINT": "USINT_TO_UDINT",
+            "SINT_TO_UDINT": "SINT_TO_UDINT",
+            "ULINT_TO_USINT": "ULINT_TO_USINT",
+            "UDINT_TO_ULINT": "UDINT_TO_ULINT",
+            "UINT_TO_ULINT": "UINT_TO_ULINT",
+            "USINT_TO_ULINT": "USINT_TO_ULINT",
+            "LINT_TO_ULINT": "LINT_TO_ULINT",
+            "ULINT_TO_LINT": "ULINT_TO_LINT",
+            "ULINT_TO_UDINT": "ULINT_TO_UDINT",
+            "SINT_TO_LINT": "SINT_TO_LINT",
+            "INT_TO_LINT": "INT_TO_LINT",
+            "DINT_TO_LINT": "DINT_TO_LINT",
+            # 64-bit type support - TwinCAT supports LINT/ULINT
+            "SUPPORTS_64BIT": "TRUE", 
+            "INT64_TYPE": "LINT",
+            "UINT64_TYPE": "ULINT",
+            "UDINT_MAX_VALUE": "16#FFFFFFFF",
+            "LINT_TO_ULINT": "LINT_TO_ULINT",
+            "ULINT_TO_LINT": "ULINT_TO_LINT",
+            "USINT_TO_ULINT": "USINT_TO_ULINT",
+            "ULINT_TO_UDINT": "ULINT_TO_UDINT",
+            "ULINT_TO_USINT": "ULINT_TO_USINT",
+            "INT64_TO_UINT64": "LINT_TO_ULINT",
+            "UINT64_TO_INT64": "ULINT_TO_LINT",
+            # Section stripping tokens for conditional compilation
+            "STRIP_64BIT_START": "",
+            "STRIP_64BIT_END": "",
+            "STRIP_NO64BIT_START": "{{STRIP_START}}",
+            "STRIP_NO64BIT_END": "{{STRIP_END}}",
         }
 
 
@@ -274,11 +382,29 @@ class RuntimeTemplateEngine:
         return resolved_name
 
     def process_file_content(self, content, tokens):
-        """Replace all tokens in file content"""
+        """Replace all tokens in file content and strip marked sections"""
+        # First, replace all regular tokens
         processed_content = content
         for token, value in tokens.items():
             processed_content = processed_content.replace(f"{{{{{token}}}}}", value)
+        
+        # Then strip marked sections
+        processed_content = self.strip_marked_sections(processed_content)
+        
         return processed_content
+    
+    def strip_marked_sections(self, content):
+        """Remove sections marked with {{STRIP_START}} ... {{STRIP_END}}"""
+        import re
+        
+        # Remove all sections marked for stripping
+        pattern = r'\{\{STRIP_START\}\}.*?\{\{STRIP_END\}\}'
+        content = re.sub(pattern, '', content, flags=re.DOTALL)
+        
+        # Clean up extra blank lines that might be left after stripping
+        content = re.sub(r'\n\s*\n\s*\n', '\n\n', content)
+        
+        return content
 
     def clean_generated_files(self):
         """Clean up previously generated files"""
@@ -324,12 +450,14 @@ class RuntimeTemplateEngine:
                 
                 # For B&R platform, generate .st files and collect .fun content
                 if platform_name.lower() == 'br':
+                    # Process tokens first to handle conditional compilation
+                    processed_template = self.process_file_content(template_content, tokens)
+                    
                     # Generate .st file with VAR sections stripped
-                    st_content = processor.strip_var_sections(template_content)
-                    st_processed = self.process_file_content(st_content, tokens)
+                    st_content = processor.strip_var_sections(processed_template)
                     
                     # Add function declarations to consolidated .fun content
-                    fun_content = processor.generate_fun_from_template(template_content, tokens)
+                    fun_content = processor.generate_fun_from_template(processed_template, tokens)
                     # Extract just the function declarations (skip header)
                     fun_lines = fun_content.split('\n')
                     in_header = True
@@ -343,7 +471,7 @@ class RuntimeTemplateEngine:
                     st_filename = self.resolve_filename(template_file.name, tokens)
                     st_path = output_dir / st_filename
                     with open(st_path, "w", encoding="utf-8") as f:
-                        f.write(st_processed)
+                        f.write(st_content)
                     generated_files.append(st_path)
                     
                 else:

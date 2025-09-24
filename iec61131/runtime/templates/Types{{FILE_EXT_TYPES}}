@@ -26,6 +26,7 @@ TYPE
 	pb_istream_struct : 	STRUCT  (* Callback function would go here - not applicable in {{PLATFORM_NAME}} *) (* We'll use buffer-only mode *) (* Free field for implementation use *)
 		state : REFERENCE TO UDINT; (* Buffer pointer and remaining bytes *)
 		bytes_left : pb_size_t; (* Error message for debugging *)
+		callback : UDINT; (* Not used in {{PLATFORM_NAME}} *)
 		errmsg : STRING[80];
 	END_STRUCT;
 END_TYPE
@@ -37,6 +38,7 @@ TYPE
 		state : REFERENCE TO UDINT; (* Buffer pointer and size limits *)
 		max_size : pb_size_t;
 		bytes_written : pb_size_t; (* Error message for debugging *)
+		callback : UDINT; (* Not used in {{PLATFORM_NAME}} *)
 		errmsg : STRING[80];
 	END_STRUCT;
 END_TYPE
@@ -87,6 +89,11 @@ END_TYPE
 
 TYPE 
 	LINT : 	STRUCT
+		data : ARRAY[0..1] OF DINT; (* 64-bit integer as two 32-bit parts *)
+	END_STRUCT;
+END_TYPE
+TYPE 
+	ULINT : 	STRUCT
 		data : ARRAY[0..1] OF DINT; (* 64-bit integer as two 32-bit parts *)
 	END_STRUCT;
 END_TYPE

@@ -11,6 +11,8 @@
     <File>pb_iterator{{FILE_EXT_CODE}}</File>
     <File>pb_codec{{FILE_EXT_CODE}}</File>
     <File>pb_common{{FILE_EXT_CODE}}</File>
+    <File>pb_encode{{FILE_EXT_CODE}}</File>
+    <File>pb_compat{{FILE_EXT_CODE}}</File>
   </Files>
   <Dependencies>
     {{PLATFORM_DEPENDENCIES}}
