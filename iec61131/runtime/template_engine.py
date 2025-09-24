@@ -96,6 +96,9 @@ class BRRuntimeConfig(PlatformConfig):
             "INT_TO_DINT": "INT_TO_DINT",
             "SINT_TO_DINT": "SINT_TO_DINT",
             "UDINT_TO_DINT": "UDINT_TO_DINT",
+            "SINT_TO_UDINT": "SINT_TO_UDINT",
+            "INT_TO_UDINT": "INT_TO_UDINT",
+            "LINT_TO_UDINT": "LINT_TO_UDINT",
             # 64-bit type support - B&R does NOT support LINT/ULINT
             "SUPPORTS_64BIT": "FALSE",
             "INT64_TYPE": "ARRAY[0..1] OF DINT",  # Simulate 64-bit with array
@@ -215,6 +218,12 @@ class CodesysRuntimeConfig(PlatformConfig):
             "SINT_TO_LINT": "SINT_TO_LINT",
             "INT_TO_LINT": "INT_TO_LINT",
             "DINT_TO_LINT": "DINT_TO_LINT",
+            "SINT_TO_UDINT": "SINT_TO_UDINT",
+            "INT_TO_UDINT": "INT_TO_UDINT",
+            "LINT_TO_UDINT": "LINT_TO_UDINT",
+            "DINT_TO_UDINT": "DINT_TO_UDINT",
+            "SINT_TO_DINT": "SINT_TO_DINT",
+            "INT_TO_DINT": "INT_TO_DINT",
             # 64-bit type support - Codesys supports LINT/ULINT
             "SUPPORTS_64BIT": "TRUE",
             "INT64_TYPE": "LINT",
@@ -330,6 +339,12 @@ class TwinCATRuntimeConfig(PlatformConfig):
             "SINT_TO_LINT": "SINT_TO_LINT",
             "INT_TO_LINT": "INT_TO_LINT",
             "DINT_TO_LINT": "DINT_TO_LINT",
+            "SINT_TO_UDINT": "SINT_TO_UDINT",
+            "INT_TO_UDINT": "INT_TO_UDINT",
+            "LINT_TO_UDINT": "LINT_TO_UDINT",
+            "DINT_TO_UDINT": "DINT_TO_UDINT",
+            "SINT_TO_DINT": "SINT_TO_DINT",
+            "INT_TO_DINT": "INT_TO_DINT",
             # 64-bit type support - TwinCAT supports LINT/ULINT
             "SUPPORTS_64BIT": "TRUE", 
             "INT64_TYPE": "LINT",

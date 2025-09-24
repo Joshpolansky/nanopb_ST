@@ -91,10 +91,44 @@ END_VAR
     safe_read_bool := FALSE;
 END_FUNCTION
 
-FUNCTION pb_encode_varint_32 : BOOL (*Encode 32-bit varint avoiding 64-bit shifts*)
+FUNCTION pb_encode_varint : BOOL (*Encode 32-bit varint - most common case*)
 VAR_INPUT
-    low : UDINT; (* uint32_t *)
-    high : UDINT; (* uint32_t *)
+    value : UDINT; (* uint32_t *)
+END_VAR
+VAR_IN_OUT
+    stream : pb_ostream_struct;
+END_VAR    
+VAR
+    i : {{TYPE_SIZE}};
+    buffer : ARRAY[0..4] OF USINT;
+    byte : USINT;
+END_VAR
+
+    IF value <= 16#7F THEN
+        (* Fast path: single byte *)
+        byte := {{UDINT_TO_USINT}}(value);
+        pb_encode_varint := pb_write(ADR(byte), 1, stream);
+        RETURN;
+    END_IF;
+
+    i := 0;
+    WHILE value <> 0 DO
+        byte := {{UDINT_TO_USINT}}(value AND 16#7F);
+        value := SHR(value, 7);
+        IF value <> 0 THEN
+            byte := byte OR 16#80;
+        END_IF;
+        buffer[i] := byte;
+        i := i + 1;
+    END_WHILE;
+
+    pb_encode_varint := pb_write(ADR(buffer), i, stream);
+END_FUNCTION
+
+FUNCTION pb_encode_varint_64 : BOOL (*Encode 64-bit varint from low/high 32-bit parts*)
+VAR_INPUT
+    low : UDINT; (* low 32 bits *)
+    high : UDINT; (* high 32 bits *)
 END_VAR
 VAR_IN_OUT
     stream : pb_ostream_struct;
@@ -133,11 +167,72 @@ END_VAR
     buffer[i] := byte;
     i := i + 1;
 
-    pb_encode_varint_32 := pb_write(ADR(buffer), i, stream);
+    pb_encode_varint_64 := pb_write(ADR(buffer), i, stream);
 END_FUNCTION
 
+FUNCTION pb_encode_svarint_32 : BOOL (*Encode signed 32-bit varint using zigzag*)
+VAR_INPUT
+    value : DINT; (* int32_t *)
+END_VAR
+VAR_IN_OUT
+    stream : pb_ostream_struct;
+END_VAR    
+VAR
+    zigzagged : UDINT;
+END_VAR
+
+    (* Zigzag encoding: (n << 1) ^ (n >> 31) *)
+    IF value < 0 THEN
+        zigzagged := NOT (SHL({{DINT_TO_UDINT}}(value), 1));
+    ELSE
+        zigzagged := SHL({{DINT_TO_UDINT}}(value), 1);
+    END_IF;
+    
+    pb_encode_svarint_32 := pb_encode_varint(zigzagged, stream);
+END_FUNCTION
+
+{{STRIP_NO64BIT_START}}
+FUNCTION pb_encode_svarint_64_compat : BOOL (*Encode signed 64-bit varint using zigzag - B&R compatibility*)
+VAR_INPUT
+    low : UDINT; (* low 32 bits *)
+    high : UDINT; (* high 32 bits *)
+END_VAR
+VAR_IN_OUT
+    stream : pb_ostream_struct;
+END_VAR    
+VAR
+    is_negative : BOOL;
+    zigzag_low : UDINT;
+    zigzag_high : UDINT;
+END_VAR
+
+    (* Check if negative (high bit of high part set) *)
+    is_negative := (high AND 16#80000000) <> 0;
+    
+    IF is_negative THEN
+        (* Zigzag encoding for negative: ~(n << 1) *)
+        zigzag_low := NOT (SHL(low, 1));
+        zigzag_high := NOT (SHL(high, 1));
+        (* Handle carry from low to high *)
+        IF (low AND 16#80000000) <> 0 THEN
+            zigzag_high := zigzag_high + 1;
+        END_IF;
+    ELSE
+        (* Zigzag encoding for positive: n << 1 *)
+        zigzag_low := SHL(low, 1);
+        zigzag_high := SHL(high, 1);
+        (* Handle carry from low to high *)
+        IF (low AND 16#80000000) <> 0 THEN
+            zigzag_high := zigzag_high + 1;
+        END_IF;
+    END_IF;
+    
+    pb_encode_svarint_64_compat := pb_encode_varint_64(zigzag_low, zigzag_high, stream);
+END_FUNCTION
+{{STRIP_NO64BIT_END}}
+
 {{STRIP_64BIT_START}}
-FUNCTION pb_encode_varint : BOOL (*Encode varint - Native 64-bit version*)
+FUNCTION pb_encode_varint_native : BOOL (*Encode varint - Native 64-bit version*)
 VAR_INPUT
     value : {{UINT64_TYPE}}; (* pb_uint64_t *)
 END_VAR
@@ -151,15 +246,15 @@ END_VAR
     IF value <= 16#7F THEN
         (* Fast path: single byte *)
         byte := {{ULINT_TO_USINT}}(value);
-        pb_encode_varint := pb_write(ADR(byte), 1, stream);
+        pb_encode_varint_native := pb_write(ADR(byte), 1, stream);
     ELSE
-        pb_encode_varint := pb_encode_varint_32({{ULINT_TO_UDINT}}(value), {{ULINT_TO_UDINT}}(SHR(value, 32)), stream);
+        pb_encode_varint_native := pb_encode_varint_64({{ULINT_TO_UDINT}}(value), {{ULINT_TO_UDINT}}(SHR(value, 32)), stream);
     END_IF;
 END_FUNCTION
 {{STRIP_64BIT_END}}
 
 {{STRIP_NO64BIT_START}}
-FUNCTION pb_encode_varint : BOOL (*Encode varint - 32-bit compatibility version*)
+FUNCTION pb_encode_varint_native : BOOL (*Encode varint - 32-bit compatibility version*)
 VAR_INPUT
     value : {{UINT64_TYPE}}; (* pb_uint64_t as array *)
 END_VAR
@@ -179,9 +274,9 @@ END_VAR
     IF (high_part = 0) AND (low_part <= 16#7F) THEN
         (* Fast path: single byte *)
         byte := {{UDINT_TO_USINT}}(low_part);
-        pb_encode_varint := pb_write(ADR(byte), 1, stream);
+        pb_encode_varint_native := pb_write(ADR(byte), 1, stream);
     ELSE
-        pb_encode_varint := pb_encode_varint_32(low_part, high_part, stream);
+        pb_encode_varint_native := pb_encode_varint_64(low_part, high_part, stream);
     END_IF;
 END_FUNCTION
 {{STRIP_NO64BIT_END}}
@@ -206,7 +301,7 @@ END_VAR
         zigzagged := SHL({{INT64_TO_UINT64}}(value), 1);
     END_IF;
     
-    pb_encode_svarint := pb_encode_varint(zigzagged, stream);
+    pb_encode_svarint := pb_encode_varint_native(zigzagged, stream);
 END_FUNCTION
 {{STRIP_64BIT_END}}
 
@@ -241,7 +336,7 @@ END_VAR
         zigzagged[1] := SHL({{DINT_TO_UDINT}}(high_part), 1);
     END_IF;
     
-    pb_encode_svarint := pb_encode_varint(zigzagged, stream);
+    pb_encode_svarint := pb_encode_varint_native(zigzagged, stream);
 END_FUNCTION
 {{STRIP_NO64BIT_END}}
 
@@ -343,12 +438,9 @@ VAR_IN_OUT
     stream : pb_ostream_struct;
 END_VAR    
 VAR
-    tag_value : UDINT;
-    tag : {{UINT64_TYPE}};
+    tag : UDINT;
 END_VAR
-
-    tag_value := SHL(field_number, 3) OR wiretype;
-    {{UDINT_TO_ULINT}}(tag_value, tag);
+    tag := SHL(field_number, 3) OR wiretype;
     pb_encode_tag := pb_encode_varint(tag, stream);
 END_FUNCTION
 
@@ -400,12 +492,8 @@ END_VAR
 VAR_IN_OUT
     stream : pb_ostream_struct;
 END_VAR    
-VAR
-    usize : {{UINT64_TYPE}};
-END_VAR
 
-    {{UDINT_TO_ULINT}}(size, usize);
-    IF NOT pb_encode_varint(usize, stream) THEN
+    IF NOT pb_encode_varint(size, stream) THEN
         pb_encode_string := FALSE;
         RETURN;
     END_IF;
@@ -436,8 +524,8 @@ END_VAR
         pb_encode_submessage := FALSE;
         RETURN;
     END_IF;
-    {{UDINT_TO_ULINT}}(substream.bytes_written,size);
-    IF NOT pb_encode_varint(size, stream) THEN
+    
+    IF NOT pb_encode_varint(substream.bytes_written, stream) THEN
         pb_encode_submessage := FALSE;
         RETURN;
     END_IF;
@@ -462,12 +550,10 @@ VAR_IN_OUT
 END_VAR
 VAR
     value : UDINT;
-    value64 : {{UINT64_TYPE}};
 END_VAR
 
     value := {{BOOL_TO_UDINT}}(safe_read_bool(field.pData));
-    {{UDINT_TO_ULINT}}(value, value64);
-    pb_enc_bool := pb_encode_varint(value64, stream);
+    pb_enc_bool := pb_encode_varint(value, stream);
 END_FUNCTION
 
 FUNCTION pb_enc_varint : BOOL (*Internal varint encoder*)
@@ -479,89 +565,98 @@ VAR
     value8_ptr : REFERENCE TO USINT;
     value16_ptr : REFERENCE TO UINT;
     value32_ptr : REFERENCE TO UDINT;
+{{STRIP_64BIT_START}}
     value64_ptr : REFERENCE TO ULINT;
+{{STRIP_64BIT_END}}
     svalue8_ptr : REFERENCE TO SINT;
     svalue16_ptr : REFERENCE TO INT;
     svalue32_ptr : REFERENCE TO DINT;
+{{STRIP_64BIT_START}}
     svalue64_ptr : REFERENCE TO LINT;
-    uvalue : {{UINT64_TYPE}};
-    svalue : {{INT64_TYPE}};
+{{STRIP_64BIT_END}}
+{{STRIP_NO64BIT_START}}
+    low_part : UDINT;
+    high_part : UDINT;
+{{STRIP_NO64BIT_END}}
 END_VAR
 
     IF PB_LTYPE(field.type) = PB_LTYPE_UVARINT THEN
-        (* Perform unsigned integer extension using typed pointer access *)
         CASE field.data_size OF
             1:
                 value8_ptr{{FIELD_PTR_ACCESS}}field.pData;
-                USINT_TO_ARRAY_COMPAT(value8_ptr, uvalue);
+                pb_enc_varint := pb_encode_varint({{USINT_TO_UDINT}}(value8_ptr), stream);
             2:
                 value16_ptr{{FIELD_PTR_ACCESS}}field.pData;
-                UINT_TO_ARRAY_COMPAT(value16_ptr, uvalue);
+                pb_enc_varint := pb_encode_varint({{UINT_TO_UDINT}}(value16_ptr), stream);
             4:
                 value32_ptr{{FIELD_PTR_ACCESS}}field.pData;
-                UDINT_TO_ARRAY_COMPAT(value32_ptr, uvalue);
+                pb_enc_varint := pb_encode_varint(value32_ptr, stream);
             8:
+                (* Only 8-byte fields need special 64-bit handling *)
 {{STRIP_64BIT_START}}
                 value64_ptr{{FIELD_PTR_ACCESS}}field.pData;
-                uvalue := value64_ptr;
+                pb_enc_varint := pb_encode_varint_64({{ULINT_TO_UDINT}}(value64_ptr), {{ULINT_TO_UDINT}}(SHR(value64_ptr, 32)), stream);
 {{STRIP_64BIT_END}}
 {{STRIP_NO64BIT_START}}
-                (* For B&R: 64-bit is stored as array, so copy from memory *)
-                {{MEMCPY_FUNC}}(ADR(uvalue), field.pData, 8);
+                value32_ptr{{FIELD_PTR_ACCESS}}field.pData;
+                low_part := value32_ptr;
+                value32_ptr{{FIELD_PTR_ACCESS}}(field.pData + 4);
+                high_part := value32_ptr;
+                pb_enc_varint := pb_encode_varint_64(low_part, high_part, stream);
 {{STRIP_NO64BIT_END}}
             ELSE
                 pb_enc_varint := FALSE;
                 RETURN;
         END_CASE;
-
-        pb_enc_varint := pb_encode_varint(uvalue, stream);
     ELSE
-        (* Perform signed integer extension using typed pointer access *)
         CASE field.data_size OF
-{{STRIP_64BIT_START}}
             1:
                 svalue8_ptr{{FIELD_PTR_ACCESS}}field.pData;
-                svalue := {{SINT_TO_LINT}}(svalue8_ptr);
+                IF PB_LTYPE(field.type) = PB_LTYPE_SVARINT THEN
+                    pb_enc_varint := pb_encode_svarint_32({{SINT_TO_DINT}}(svalue8_ptr), stream);
+                ELSE
+                    pb_enc_varint := pb_encode_varint({{SINT_TO_UDINT}}(svalue8_ptr), stream);
+                END_IF;
             2:
                 svalue16_ptr{{FIELD_PTR_ACCESS}}field.pData;
-                svalue := {{INT_TO_LINT}}(svalue16_ptr);
+                IF PB_LTYPE(field.type) = PB_LTYPE_SVARINT THEN
+                    pb_enc_varint := pb_encode_svarint_32({{INT_TO_DINT}}(svalue16_ptr), stream);
+                ELSE
+                    pb_enc_varint := pb_encode_varint({{INT_TO_UDINT}}(svalue16_ptr), stream);
+                END_IF;
             4:
                 svalue32_ptr{{FIELD_PTR_ACCESS}}field.pData;
-                svalue := {{DINT_TO_LINT}}(svalue32_ptr);
+                IF PB_LTYPE(field.type) = PB_LTYPE_SVARINT THEN
+                    pb_enc_varint := pb_encode_svarint_32(svalue32_ptr, stream);
+                ELSE
+                    pb_enc_varint := pb_encode_varint({{DINT_TO_UDINT}}(svalue32_ptr), stream);
+                END_IF;
             8:
+                (* Only 8-byte signed fields need special 64-bit handling *)
+{{STRIP_64BIT_START}}
                 svalue64_ptr{{FIELD_PTR_ACCESS}}field.pData;
-                svalue := svalue64_ptr;
+                IF PB_LTYPE(field.type) = PB_LTYPE_SVARINT THEN
+                    pb_enc_varint := pb_encode_svarint(svalue64_ptr, stream);
+                ELSE
+                    pb_enc_varint := pb_encode_varint_64({{LINT_TO_UDINT}}(svalue64_ptr), {{LINT_TO_UDINT}}(SHR(svalue64_ptr, 32)), stream);
+                END_IF;
 {{STRIP_64BIT_END}}
 {{STRIP_NO64BIT_START}}
-            1:
-                svalue8_ptr{{FIELD_PTR_ACCESS}}field.pData;
-                {{SINT_TO_LINT}}(svalue8_ptr, svalue);
-            2:
-                svalue16_ptr{{FIELD_PTR_ACCESS}}field.pData;
-                {{INT_TO_LINT}}(svalue16_ptr, svalue);
-            4:
+                (* For B&R: read as two 32-bit signed values *)
                 svalue32_ptr{{FIELD_PTR_ACCESS}}field.pData;
-                {{DINT_TO_LINT}}(svalue32_ptr, svalue);
-            8:
-                (* For B&R: 64-bit is stored as array, so copy from memory *)
-                {{MEMCPY_FUNC}}(ADR(svalue), field.pData, 8);
+                low_part := {{DINT_TO_UDINT}}(svalue32_ptr);
+                svalue32_ptr{{FIELD_PTR_ACCESS}}(field.pData + 4);
+                high_part := {{DINT_TO_UDINT}}(svalue32_ptr);
+                IF PB_LTYPE(field.type) = PB_LTYPE_SVARINT THEN
+                    pb_enc_varint := pb_encode_svarint_64_compat(low_part, high_part, stream);
+                ELSE
+                    pb_enc_varint := pb_encode_varint_64(low_part, high_part, stream);
+                END_IF;
 {{STRIP_NO64BIT_END}}
             ELSE
                 pb_enc_varint := FALSE;
                 RETURN;
         END_CASE;
-
-        IF PB_LTYPE(field.type) = PB_LTYPE_SVARINT THEN
-            pb_enc_varint := pb_encode_svarint(svalue, stream);
-        ELSE
-{{STRIP_64BIT_START}}
-            pb_enc_varint := pb_encode_varint({{INT64_TO_UINT64}}(svalue), stream);
-{{STRIP_64BIT_END}}
-{{STRIP_NO64BIT_START}}
-            {{INT64_TO_UINT64}}(svalue, uvalue);
-            pb_enc_varint := pb_encode_varint(uvalue, stream);
-{{STRIP_NO64BIT_END}}
-        END_IF;
     END_IF;
 END_FUNCTION
 
