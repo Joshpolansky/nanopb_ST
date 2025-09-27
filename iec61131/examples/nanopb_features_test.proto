@@ -1,0 +1,97 @@
+syntax = "proto3";
+
+// Comprehensive nanoPB features test
+import "nanopb.proto";
+
+// Test basic types
+message BasicTypes {
+  bool bool_field = 1;
+  int32 int32_field = 2;
+  int64 int64_field = 3;
+  uint32 uint32_field = 4;
+  uint64 uint64_field = 5;
+  sint32 sint32_field = 6;
+  sint64 sint64_field = 7;
+  fixed32 fixed32_field = 8;
+  fixed64 fixed64_field = 9;
+  sfixed32 sfixed32_field = 10;
+  sfixed64 sfixed64_field = 11;
+  float float_field = 12;
+  double double_field = 13;
+  string string_field = 14;
+  bytes bytes_field = 15;
+}
+
+// Test repeated fields with nanoPB options
+message RepeatedTypes {
+  repeated int32 numbers = 1 [(nanopb).max_count = 10];
+  repeated string names = 2 [(nanopb).max_count = 5, (nanopb).max_size = 32];
+  repeated float values = 3; // Uses default max_count
+}
+
+// Test string/bytes size options
+message SizedFields {
+  string fixed_string = 1 [(nanopb).max_size = 64];
+  bytes fixed_bytes = 2 [(nanopb).max_size = 128];
+  string default_string = 3; // Uses nanoPB default
+}
+
+// Test enums with size options
+enum Status {
+  UNKNOWN = 0;
+  ACTIVE = 1;
+  INACTIVE = 2;
+  ERROR = 3;
+}
+
+enum LargeEnum {
+  option (nanopb_enumopt).long_names = false;
+  VALUE_0 = 0;
+  VALUE_1000 = 1000;
+}
+
+message EnumTest {
+  Status status = 1;
+  LargeEnum large_value = 2 [(nanopb).int_size = IS_16];
+}
+
+// Test nested messages
+message NestedMessage {
+  message Inner {
+    int32 value = 1;
+    string name = 2 [(nanopb).max_size = 20];
+  }
+  Inner inner = 1;
+  repeated Inner inner_list = 2 [(nanopb).max_count = 3];
+}
+
+// Test oneof
+message OneOfTest {
+  oneof choice {
+    int32 int_choice = 1;
+    string string_choice = 2 [(nanopb).max_size = 50];
+    float float_choice = 3;
+  }
+  string common_field = 4;
+}
+
+// Test optional vs required (proto3 doesn't have required, but optional exists)
+message OptionalTest {
+  optional int32 optional_int = 1;
+  optional string optional_string = 2 [(nanopb).max_size = 40];
+  int32 regular_int = 3;
+}
+
+// Test callback fields for large/dynamic data
+message CallbackTest {
+  string normal_field = 1;
+  bytes large_data = 2 [(nanopb).type = FT_CALLBACK];
+  repeated int32 dynamic_array = 3 [(nanopb).type = FT_CALLBACK];
+}
+
+// Test packed repeated fields
+message PackedTest {
+  repeated int32 packed_ints = 1 [packed = true];
+  repeated float packed_floats = 2 [packed = true];
+  repeated bool packed_bools = 3 [packed = true];
+}

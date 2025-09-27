@@ -1,0 +1,59 @@
+{{SCOPE_CONSTANT}}
+	{{PLATFORM_HEADER}}
+	(* nanoPB constants ported to {{PLATFORM_NAME}} *)
+	
+	(* Field type constants - least significant 4 bits *)
+	PB_LTYPE_BOOL : {{TYPE_TYPE}} := 16#00;
+	PB_LTYPE_VARINT : {{TYPE_TYPE}} := 16#01;
+	PB_LTYPE_UVARINT : {{TYPE_TYPE}} := 16#02;
+	PB_LTYPE_SVARINT : {{TYPE_TYPE}} := 16#03;
+	PB_LTYPE_FIXED32 : {{TYPE_TYPE}} := 16#04;
+	PB_LTYPE_FIXED64 : {{TYPE_TYPE}} := 16#05;
+	PB_LTYPE_BYTES : {{TYPE_TYPE}} := 16#06;
+	PB_LTYPE_STRING : {{TYPE_TYPE}} := 16#07;
+	PB_LTYPE_SUBMESSAGE : {{TYPE_TYPE}} := 16#08;
+	PB_LTYPE_SUBMSG_W_CB : {{TYPE_TYPE}} := 16#09;
+	PB_LTYPE_EXTENSION : {{TYPE_TYPE}} := 16#0A;
+	PB_LTYPE_FIXED_LENGTH_BYTES : {{TYPE_TYPE}} := 16#0B;
+	
+	(* Field repetition rules *)
+	PB_HTYPE_REQUIRED : {{TYPE_TYPE}} := 16#00;
+	PB_HTYPE_OPTIONAL : {{TYPE_TYPE}} := 16#10;
+	PB_HTYPE_SINGULAR : {{TYPE_TYPE}} := 16#10;
+	PB_HTYPE_REPEATED : {{TYPE_TYPE}} := 16#20;
+	PB_HTYPE_FIXARRAY : {{TYPE_TYPE}} := 16#20;
+	PB_HTYPE_ONEOF : {{TYPE_TYPE}} := 16#30;
+	
+	(* Field allocation types *)
+	PB_ATYPE_STATIC : {{TYPE_TYPE}} := 16#00;
+	PB_ATYPE_POINTER : {{TYPE_TYPE}} := 16#80;
+	PB_ATYPE_CALLBACK : {{TYPE_TYPE}} := 16#40;
+	
+	(* Bit masks *)
+	PB_LTYPE_MASK : {{TYPE_TYPE}} := 16#0F;
+	PB_HTYPE_MASK : {{TYPE_TYPE}} := 16#30;
+	PB_ATYPE_MASK : {{TYPE_TYPE}} := 16#C0;
+	
+	(* Maximum values *)
+	PB_SIZE_MAX : {{TYPE_SIZE}} := 65535;
+	PB_MAX_REQUIRED_FIELDS : {{TYPE_TYPE}} := 64;
+	
+	(* Wire type constants *)
+	PB_WIRE_TYPE_MASK : {{TYPE_TYPE}} := 16#07;
+	
+	(* nanoPB version *)
+	NANOPB_VERSION : STRING[20] := 'nanopb-1.0.0-dev-{{PLATFORM_NAME}}';
+	
+	(* Error constants *)
+	PB_ERR_NONE : STRING[30] := '';
+	PB_ERR_IO : STRING[30] := 'IO error';
+	PB_ERR_INVALID_FIELD : STRING[30] := 'Invalid field';
+	PB_ERR_INVALID_TAG : STRING[30] := 'Invalid tag';
+	PB_ERR_INVALID_WIRE_TYPE : STRING[30] := 'Invalid wire type';
+	PB_ERR_EOF : STRING[30] := 'End of stream';
+	PB_ERR_BUFFER_OVERFLOW : STRING[30] := 'Buffer overflow';
+	
+	PB_ENCODE_DELIMITED : {{TYPE_TYPE}} := 16#01;
+	PB_ENCODE_NULLTERMINATED : {{TYPE_TYPE}} := 16#02;
+
+END_VAR

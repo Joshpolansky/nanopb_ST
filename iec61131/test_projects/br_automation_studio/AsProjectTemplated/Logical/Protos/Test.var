@@ -1,0 +1,4 @@
+VAR
+	gSystemStatusIn : ProtoSystemStatus;
+	gSystemStatusOut : ProtoSystemStatus;
+END_VAR

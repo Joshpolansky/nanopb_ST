@@ -1,0 +1,86 @@
+(* nanoPB Runtime Library for B&R Automation Studio *)
+(* nanoPB types ported to B&R IEC 61131-3 ST *)
+(* Basic data type for storing encoded data and other byte streams *)
+
+TYPE
+	pb_byte_t : USINT; (* Data type for storing sizes of struct fields and array counts *)
+	pb_size_t : UINT;
+	pb_ssize_t : INT; (* Field type information - encodes field type, allocation and repetition *)
+	pb_type_t : USINT; (* Wire types for protocol buffer encoding *)
+	pb_wire_type_t : 
+		( (* 64-bit unsigned integer structure for B&R compatibility *)
+		PB_WT_VARINT := 0,
+		PB_WT_64BIT := 1,
+		PB_WT_STRING := 2,
+		PB_WT_32BIT := 5
+		);
+	pb_uint64_struct : 	STRUCT 
+		low : UDINT; (* Lower 32 bits *)
+		high : UDINT; (* Upper 32 bits *)
+	END_STRUCT;
+END_TYPE
+
+(* Input stream structure for decoding *)
+
+TYPE
+	pb_istream_struct : 	STRUCT  (* Callback function would go here - not applicable in B&R *) (* We'll use buffer-only mode *) (* Free field for implementation use *)
+		state : REFERENCE TO UDINT; (* Buffer pointer and remaining bytes *)
+		bytes_left : pb_size_t; (* Error message for debugging *)
+		errmsg : STRING[80];
+	END_STRUCT;
+END_TYPE
+
+(* Output stream structure for encoding *)
+
+TYPE
+	pb_ostream_struct : 	STRUCT  (* Free field for implementation use *)
+		state : REFERENCE TO UDINT; (* Buffer pointer and size limits *)
+		max_size : pb_size_t;
+		bytes_written : pb_size_t; (* Error message for debugging *)
+		errmsg : STRING[80];
+	END_STRUCT;
+END_TYPE
+
+(* Message descriptor - describes the fields in a message *)
+
+TYPE
+	pb_msgdesc_struct : 	STRUCT  (* Field information array *)
+		field_info : REFERENCE TO UDINT; (* Array of encoded field descriptors *) (* Submessage descriptors *)
+		submsg_info : REFERENCE TO UDINT; (* Array of pointers to pb_msgdesc_struct *) (* Default values *)
+		default_value : REFERENCE TO pb_byte_t; (* Field counts and metadata *)
+		callback : UDINT;
+		field_count : pb_size_t;
+		required_field_count : pb_size_t;
+		largest_tag : pb_size_t;
+	END_STRUCT;
+END_TYPE
+
+(* Field iterator for processing message fields *)
+
+TYPE
+	pb_field_iter_struct : 	STRUCT  (* Message descriptor *)
+		descriptor : REFERENCE TO pb_msgdesc_struct; (* Current message being processed *)
+		message : REFERENCE TO UDINT; (* void* equivalent *) (* Iterator state *)
+		index : pb_size_t;
+		field_info_index : pb_size_t;
+		required_field_index : pb_size_t;
+		submessage_index : pb_size_t; (* Current field information *)
+		tag : pb_size_t;
+		data_size : pb_size_t;
+		array_size : pb_size_t;
+		type : pb_type_t; (* Pointers to current field data *)
+		pField : REFERENCE TO UDINT;
+		pData : REFERENCE TO UDINT;
+		pSize : REFERENCE TO UDINT; (* For submessages *)
+		submsg_desc : REFERENCE TO pb_msgdesc_struct;
+	END_STRUCT;
+END_TYPE
+
+(* Byte array structure - variable length data *)
+
+TYPE
+	pb_bytes_array_struct : 	STRUCT 
+		size : pb_size_t;
+		bytes : ARRAY[0..0]OF pb_byte_t; (* Will be larger in practice *)
+	END_STRUCT;
+END_TYPE

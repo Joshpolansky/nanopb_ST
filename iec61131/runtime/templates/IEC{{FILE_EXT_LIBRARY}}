@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?AutomationStudio FileVersion="4.9"?>
+<Library SubType="IEC" xmlns="http://br-automation.co.at/AS/Library">
+  <Files>
+    <File Description="Exported data types">Types{{FILE_EXT_TYPES}}</File>
+    <File Description="Exported constants">Constants{{FILE_EXT_VARIABLES}}</File>
+    <File Description="Exported functions and function blocks">NanoPbSt{{FILE_EXT_FUNCTIONS}}</File>
+    <File>pb_varint{{FILE_EXT_CODE}}</File>
+    <File>pb_stream{{FILE_EXT_CODE}}</File>
+    <File>pb_fields{{FILE_EXT_CODE}}</File>
+    <File>pb_iterator{{FILE_EXT_CODE}}</File>
+    <File>pb_codec{{FILE_EXT_CODE}}</File>
+    <File>pb_common{{FILE_EXT_CODE}}</File>
+    <File>pb_encode{{FILE_EXT_CODE}}</File>
+    <File>pb_decode{{FILE_EXT_CODE}}</File>
+    <File>pb_compat{{FILE_EXT_CODE}}</File>
+  </Files>
+  <Dependencies>
+    {{PLATFORM_DEPENDENCIES}}
+  </Dependencies>
+</Library>

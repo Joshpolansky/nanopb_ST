@@ -1,0 +1,644 @@
+﻿{{PLATFORM_HEADER}}
+(* nanoPB decode functions *)
+(* Ported from nanoPB C library to {{PLATFORM_NAME}} IEC 61131-3 ST *)
+
+FUNCTION buf_read : BOOL (*Internal buffer reading function*)
+VAR_INPUT
+    buf : UDINT; (* pb_byte_t pointer *)
+    count : {{TYPE_SIZE}}; (* size_t *)
+END_VAR
+VAR_IN_OUT
+    stream : pb_istream_struct;
+END_VAR    
+VAR
+    source : UDINT; (* const pb_byte_t pointer *)
+END_VAR
+
+    source := stream.state;
+    stream.state := source + count;
+    
+    IF buf <> 0 THEN
+        {{MEMCPY_FUNC}}(buf, source, count);
+    END_IF;
+    
+    buf_read := TRUE;
+END_FUNCTION
+
+FUNCTION pb_read : BOOL (*Read data from input stream*)
+VAR_INPUT
+    buf : UDINT; (* pb_byte_t pointer *)
+    count : {{TYPE_SIZE}}; (* size_t *)
+END_VAR
+VAR_IN_OUT
+    stream : pb_istream_struct;
+END_VAR    
+
+    IF count = 0 THEN
+        pb_read := TRUE;
+        RETURN;
+    END_IF;
+
+    IF stream.bytes_left < count THEN
+        pb_read := FALSE; (* end-of-stream *)
+        RETURN;
+    END_IF;
+    
+    IF NOT buf_read(buf, count, stream) THEN
+        pb_read := FALSE;
+        RETURN;
+    END_IF;
+    
+    IF stream.bytes_left < count THEN
+        stream.bytes_left := 0;
+    ELSE
+        stream.bytes_left := stream.bytes_left - count;
+    END_IF;
+
+    pb_read := TRUE;
+END_FUNCTION
+
+FUNCTION pb_readbyte : BOOL (*Read a single byte from input stream*)
+VAR_INPUT
+    buf : UDINT; (* pb_byte_t pointer *)
+END_VAR
+VAR_IN_OUT
+    stream : pb_istream_struct;
+END_VAR    
+VAR
+    source_ptr : REFERENCE TO USINT;
+    buf_ptr : REFERENCE TO USINT;
+END_VAR
+
+    IF stream.bytes_left = 0 THEN
+        pb_readbyte := FALSE; (* end-of-stream *)
+        RETURN;
+    END_IF;
+
+    source_ptr{{FIELD_PTR_ACCESS}}stream.state;
+    buf_ptr{{FIELD_PTR_ACCESS}}buf;
+    buf_ptr := source_ptr;
+    
+    stream.state := stream.state + 1;
+    stream.bytes_left := stream.bytes_left - 1;
+    
+    pb_readbyte := TRUE;
+END_FUNCTION
+
+FUNCTION pb_istream_from_buffer : UDINT (*Create input stream from buffer*)
+VAR_INPUT
+    buf : UDINT; (* const pb_byte_t pointer *)
+    msglen : {{TYPE_SIZE}}; (* size_t *)
+END_VAR
+VAR_IN_OUT
+    stream : pb_istream_struct;
+END_VAR    
+
+    {{MEMSET_FUNC}}(ADR(stream), 0, SIZEOF(stream));
+    stream.callback := 0;
+    stream.state := buf;
+    stream.bytes_left := msglen;
+    
+    pb_istream_from_buffer := ADR(stream);
+END_FUNCTION
+
+FUNCTION pb_decode_varint : BOOL (*Decode 32-bit varint - most common case*)
+VAR_INPUT
+    dest : UDINT; (* uint32_t pointer *)
+END_VAR
+VAR_IN_OUT
+    stream : pb_istream_struct;
+END_VAR    
+VAR
+    byte : USINT;
+    result : UDINT;
+    bitpos : UDINT;
+    dest_ptr : REFERENCE TO UDINT;
+END_VAR
+
+    result := 0;
+    bitpos := 0;
+    dest_ptr{{FIELD_PTR_ACCESS}}dest;
+    
+    REPEAT
+        IF NOT pb_readbyte(ADR(byte), stream) THEN
+            pb_decode_varint := FALSE;
+            RETURN;
+        END_IF;
+        
+        IF bitpos >= 32 THEN
+            pb_decode_varint := FALSE; (* Overflow *)
+            RETURN;  
+        END_IF;
+        
+        result := result OR SHL({{USINT_TO_UDINT}}(byte AND 16#7F), bitpos);
+        bitpos := bitpos + 7;
+    UNTIL (byte AND 16#80) = 0
+    END_REPEAT;
+    
+    dest_ptr := result;
+    pb_decode_varint := TRUE;
+END_FUNCTION
+
+FUNCTION pb_decode_varint_64 : BOOL (*Decode 64-bit varint from low/high 32-bit parts*)
+VAR_INPUT
+    dest_low : UDINT; (* pointer to low 32 bits *)
+    dest_high : UDINT; (* pointer to high 32 bits *)
+END_VAR
+VAR_IN_OUT
+    stream : pb_istream_struct;
+END_VAR    
+VAR
+    byte : USINT;
+    low : UDINT;
+    high : UDINT;
+    bitpos : UDINT;
+    dest_low_ptr : REFERENCE TO UDINT;
+    dest_high_ptr : REFERENCE TO UDINT;
+END_VAR
+
+    low := 0;
+    high := 0;
+    bitpos := 0;
+    dest_low_ptr{{FIELD_PTR_ACCESS}}dest_low;
+    dest_high_ptr{{FIELD_PTR_ACCESS}}dest_high;
+    
+    REPEAT
+        IF NOT pb_readbyte(ADR(byte), stream) THEN
+            pb_decode_varint_64 := FALSE;
+            RETURN;
+        END_IF;
+        
+        (* Check for overflow like nanoPB: bitpos >= 63 && (byte & 0xFE) != 0 *)
+        IF bitpos >= 63 AND (byte AND 16#FE) <> 0 THEN
+            pb_decode_varint_64 := FALSE; (* Varint overflow *)
+            RETURN;  
+        END_IF;
+        
+        IF bitpos < 32 THEN
+            (* Low 32 bits *)
+            IF bitpos = 28 THEN
+                (* Special case: bits may overflow to high part *)
+                (* For bitpos=28, we need to split the 7 bits:
+                   - bits 0-3 go to low part (positions 28-31)
+                   - bits 4-6 go to high part (positions 0-2) *)
+                low := low OR SHL({{USINT_TO_UDINT}}(byte AND 16#0F), 28);
+                high := high OR SHR({{USINT_TO_UDINT}}(byte AND 16#70), 4);
+            ELSE
+                (* Safe shift range: bitpos = 0, 7, 14, 21 *)
+                low := low OR SHL({{USINT_TO_UDINT}}(byte AND 16#7F), bitpos);
+            END_IF;
+        ELSE
+            (* High 32 bits: bitpos = 35, 42, 49, 56... *)
+            high := high OR SHL({{USINT_TO_UDINT}}(byte AND 16#7F), bitpos - 32);
+        END_IF;
+        
+        bitpos := bitpos + 7;
+    UNTIL (byte AND 16#80) = 0
+    END_REPEAT;
+    
+    dest_low_ptr := low;
+    dest_high_ptr := high;
+    pb_decode_varint_64 := TRUE;
+END_FUNCTION
+
+FUNCTION pb_decode_svarint_32 : BOOL (*Decode signed 32-bit varint using zigzag*)
+VAR_INPUT
+    dest : UDINT; (* int32_t pointer *)
+END_VAR
+VAR_IN_OUT
+    stream : pb_istream_struct;
+END_VAR    
+VAR
+    value : UDINT;
+    dest_ptr : REFERENCE TO DINT;
+END_VAR
+
+    IF NOT pb_decode_varint(ADR(value), stream) THEN
+        pb_decode_svarint_32 := FALSE;
+        RETURN;
+    END_IF;
+    
+    dest_ptr{{FIELD_PTR_ACCESS}}dest;
+    
+    (* Zigzag decoding: (n >> 1) ^ (-(n & 1)) *)
+    IF (value AND 1) <> 0 THEN
+        dest_ptr := NOT {{UDINT_TO_DINT}}(SHR(value, 1));
+    ELSE
+        dest_ptr := {{UDINT_TO_DINT}}(SHR(value, 1));
+    END_IF;
+    
+    pb_decode_svarint_32 := TRUE;
+END_FUNCTION
+
+FUNCTION pb_decode_fixed32 : BOOL (*Decode 32-bit fixed value*)
+VAR_INPUT
+    dest : UDINT; (* void pointer *)
+END_VAR
+VAR_IN_OUT
+    stream : pb_istream_struct;
+END_VAR    
+VAR
+    bytes : ARRAY[0..3] OF USINT;
+    result : UDINT;
+    dest_ptr : REFERENCE TO UDINT;
+END_VAR
+
+    IF NOT pb_read(ADR(bytes), 4, stream) THEN
+        pb_decode_fixed32 := FALSE;
+        RETURN;
+    END_IF;
+    
+    result := {{USINT_TO_UDINT}}(bytes[0]) OR
+              SHL({{USINT_TO_UDINT}}(bytes[1]), 8) OR
+              SHL({{USINT_TO_UDINT}}(bytes[2]), 16) OR
+              SHL({{USINT_TO_UDINT}}(bytes[3]), 24);
+    
+    dest_ptr{{FIELD_PTR_ACCESS}}dest;
+    dest_ptr := result;
+    pb_decode_fixed32 := TRUE;
+END_FUNCTION
+
+FUNCTION pb_skip_varint : BOOL (*Skip varint in stream*)
+VAR_IN_OUT
+    stream : pb_istream_struct;
+END_VAR    
+VAR
+    byte : USINT;
+END_VAR
+
+    REPEAT
+        IF NOT pb_readbyte(ADR(byte), stream) THEN
+            pb_skip_varint := FALSE;
+            RETURN;
+        END_IF;
+    UNTIL (byte AND 16#80) = 0
+    END_REPEAT;
+    
+    pb_skip_varint := TRUE;
+END_FUNCTION
+
+FUNCTION pb_skip_string : BOOL (*Skip string in stream*)
+VAR_IN_OUT
+    stream : pb_istream_struct;
+END_VAR    
+VAR
+    length : UDINT;
+END_VAR
+
+    IF NOT pb_decode_varint(ADR(length), stream) THEN
+        pb_skip_string := FALSE;
+        RETURN;
+    END_IF;
+    
+    pb_skip_string := pb_read(0, {{UDINT_TO_UINT}}(length), stream);
+END_FUNCTION
+
+FUNCTION pb_decode_tag : BOOL (*Decode tag and wire type*)
+VAR_INPUT
+    wire_type : UDINT; (* pb_wire_type_t pointer *)
+    tag : UDINT; (* uint32_t pointer *)
+END_VAR
+VAR_IN_OUT
+    stream : pb_istream_struct;
+END_VAR    
+VAR
+    temp : UDINT;
+    wire_type_ptr : REFERENCE TO USINT;
+    tag_ptr : REFERENCE TO UDINT;
+END_VAR
+
+    (* Decode the varint *)
+    IF NOT pb_decode_varint(ADR(temp), stream) THEN
+        pb_decode_tag := FALSE;
+        RETURN;
+    END_IF;
+    
+    wire_type_ptr{{FIELD_PTR_ACCESS}}wire_type;
+    tag_ptr{{FIELD_PTR_ACCESS}}tag;
+    
+    wire_type_ptr := {{UDINT_TO_USINT}}(temp AND 16#07);
+    tag_ptr := SHR(temp, 3);
+    
+    pb_decode_tag := TRUE;
+END_FUNCTION
+
+FUNCTION pb_dec_varint : BOOL (*Internal varint decoder*)
+VAR_IN_OUT
+    field : pb_field_iter_struct;
+    stream : pb_istream_struct;
+END_VAR
+VAR
+    value8_ptr : REFERENCE TO USINT;
+    value16_ptr : REFERENCE TO UINT;
+    value32_ptr : REFERENCE TO UDINT;
+    svalue8_ptr : REFERENCE TO SINT;
+    svalue16_ptr : REFERENCE TO INT;
+    svalue32_ptr : REFERENCE TO DINT;
+{{STRIP_NO64BIT_START}}
+    low_part : UDINT;
+    high_part : UDINT;
+{{STRIP_NO64BIT_END}}
+    temp_value : UDINT;
+END_VAR
+
+    IF PB_LTYPE(field.type) = PB_LTYPE_UVARINT THEN
+        (* Simplified approach: handle 1/2/4 byte fields as 32-bit *)
+        CASE field.data_size OF
+            1:
+                IF NOT pb_decode_varint(ADR(temp_value), stream) THEN
+                    pb_dec_varint := FALSE;
+                    RETURN;
+                END_IF;
+                value8_ptr{{FIELD_PTR_ACCESS}}field.pData;
+                value8_ptr := {{UDINT_TO_USINT}}(temp_value);
+            2:
+                IF NOT pb_decode_varint(ADR(temp_value), stream) THEN
+                    pb_dec_varint := FALSE;
+                    RETURN;
+                END_IF;
+                value16_ptr{{FIELD_PTR_ACCESS}}field.pData;
+                value16_ptr := {{UDINT_TO_UINT}}(temp_value);
+            4:
+                IF NOT pb_decode_varint(field.pData, stream) THEN
+                    pb_dec_varint := FALSE;
+                    RETURN;
+                END_IF;
+            8:
+                (* Only 8-byte fields need special 64-bit handling *)
+{{STRIP_NO64BIT_START}}
+                (* For B&R: decode to two 32-bit values *)
+                IF NOT pb_decode_varint_64(ADR(low_part), ADR(high_part), stream) THEN
+                    pb_dec_varint := FALSE;
+                    RETURN;
+                END_IF;
+                value32_ptr{{FIELD_PTR_ACCESS}}field.pData;
+                value32_ptr := low_part;
+                value32_ptr{{FIELD_PTR_ACCESS}}(field.pData + 4);
+                value32_ptr := high_part;
+{{STRIP_NO64BIT_END}}
+            ELSE
+                pb_dec_varint := FALSE;
+                RETURN;
+        END_CASE;
+    ELSE
+        (* Simplified approach: handle 1/2/4 byte signed fields as 32-bit *)
+        CASE field.data_size OF
+            1:
+                IF PB_LTYPE(field.type) = PB_LTYPE_SVARINT THEN
+                    IF NOT pb_decode_svarint_32(field.pData, stream) THEN
+                        pb_dec_varint := FALSE;
+                        RETURN;
+                    END_IF;
+                ELSE
+                    IF NOT pb_decode_varint(ADR(temp_value), stream) THEN
+                        pb_dec_varint := FALSE;
+                        RETURN;
+                    END_IF;
+                    svalue8_ptr{{FIELD_PTR_ACCESS}}field.pData;
+                    svalue8_ptr := {{UDINT_TO_SINT}}(temp_value);
+                END_IF;
+            2:
+                IF PB_LTYPE(field.type) = PB_LTYPE_SVARINT THEN
+                    IF NOT pb_decode_svarint_32(field.pData, stream) THEN
+                        pb_dec_varint := FALSE;
+                        RETURN;
+                    END_IF;
+                ELSE
+                    IF NOT pb_decode_varint(ADR(temp_value), stream) THEN
+                        pb_dec_varint := FALSE;
+                        RETURN;
+                    END_IF;
+                    svalue16_ptr{{FIELD_PTR_ACCESS}}field.pData;
+                    svalue16_ptr := {{UDINT_TO_INT}}(temp_value);
+                END_IF;
+            4:
+                IF PB_LTYPE(field.type) = PB_LTYPE_SVARINT THEN
+                    IF NOT pb_decode_svarint_32(field.pData, stream) THEN
+                        pb_dec_varint := FALSE;
+                        RETURN;
+                    END_IF;
+                ELSE
+                    IF NOT pb_decode_varint(ADR(temp_value), stream) THEN
+                        pb_dec_varint := FALSE;
+                        RETURN;
+                    END_IF;
+                    svalue32_ptr{{FIELD_PTR_ACCESS}}field.pData;
+                    svalue32_ptr := {{UDINT_TO_DINT}}(temp_value);
+                END_IF;
+            8:
+                (* Only 8-byte signed fields need special 64-bit handling *)
+{{STRIP_NO64BIT_START}}
+                (* For B&R: decode to two 32-bit signed values *)
+                IF NOT pb_decode_varint_64(ADR(low_part), ADR(high_part), stream) THEN
+                    pb_dec_varint := FALSE;
+                    RETURN;
+                END_IF;
+                
+                (* Handle zigzag decoding for SVARINT fields *)
+                IF PB_LTYPE(field.type) = PB_LTYPE_SVARINT THEN
+                    (* 64-bit zigzag decoding: (n >> 1) ^ (-(n & 1)) *)
+                    IF (low_part AND 1) <> 0 THEN
+                        (* Negative number: invert the shifted result *)
+                        (* Right shift by 1: (high << 31) | (low >> 1) *)
+                        low_part := SHR(low_part, 1) OR SHL(high_part AND 1, 31);
+                        high_part := SHR(high_part, 1);
+                        (* Invert: NOT value *)
+                        low_part := NOT low_part;
+                        high_part := NOT high_part;
+                    ELSE
+                        (* Positive number: just right shift by 1 *)
+                        low_part := SHR(low_part, 1) OR SHL(high_part AND 1, 31);
+                        high_part := SHR(high_part, 1);
+                    END_IF;
+                END_IF;
+                
+                (* Store the two 32-bit parts *)
+                svalue32_ptr{{FIELD_PTR_ACCESS}}field.pData;
+                svalue32_ptr := {{UDINT_TO_DINT}}(low_part);
+                svalue32_ptr{{FIELD_PTR_ACCESS}}(field.pData + 4);
+                svalue32_ptr := {{UDINT_TO_DINT}}(high_part);
+{{STRIP_NO64BIT_END}}
+            ELSE
+                pb_dec_varint := FALSE;
+                RETURN;
+        END_CASE;
+    END_IF;
+    
+    pb_dec_varint := TRUE;
+END_FUNCTION
+
+FUNCTION pb_decode : BOOL (*Main decode function*)
+VAR_INPUT
+    fields : UDINT; (* const pb_msgdesc_t pointer *)
+    dest_struct : UDINT; (* void pointer *)
+END_VAR
+VAR_IN_OUT
+    stream : pb_istream_struct;
+END_VAR
+VAR
+    iter : pb_field_iter_struct;
+    msgdesc : REFERENCE TO pb_msgdesc_struct;
+    wire_type : USINT;
+    tag : UDINT;
+    field_found : BOOL;
+END_VAR
+
+    msgdesc{{FIELD_PTR_ACCESS}}fields;
+    
+    WHILE stream.bytes_left > 0 DO
+        IF NOT pb_decode_tag(ADR(wire_type), ADR(tag), stream) THEN
+            pb_decode := FALSE;
+            RETURN;
+        END_IF;
+        
+        field_found := FALSE;
+        
+        IF pb_field_iter_begin(dest_struct, iter, msgdesc) THEN
+            REPEAT
+                IF iter.tag = tag THEN
+                    field_found := TRUE;
+
+                    CASE PB_HTYPE(iter.type) OF
+                        PB_HTYPE_OPTIONAL:
+                            IF iter.pSize <> 0 THEN
+                                (* Mark field as present *)
+                                {{MEMSET_FUNC}}(iter.pSize, 1, 1);
+                            END_IF;
+                        PB_HTYPE_REPEATED:
+                            (* Arrays not fully supported in this simplified version *)
+                            pb_decode := TRUE; (* Just skip for now *)
+                            RETURN;
+                        PB_HTYPE_ONEOF:
+                            (* Arrays not fully supported in this simplified version *)
+                            pb_decode := TRUE; (* Just skip for now *)
+                            RETURN;
+                        PB_HTYPE_REQUIRED:
+                            (* Singular field, proceed *)
+                        ELSE
+                            RETURN;
+                    END_CASE;
+
+                    (* Handle field based on type *)
+                    CASE PB_LTYPE(iter.type) OF
+                        PB_LTYPE_BOOL:
+                            IF wire_type <> PB_WT_VARINT THEN
+                                pb_decode := FALSE;
+                                RETURN;
+                            END_IF;
+                            IF NOT pb_dec_varint(iter, stream) THEN
+                                pb_decode := FALSE;
+                                RETURN;
+                            END_IF;
+                        PB_LTYPE_VARINT:
+                            IF wire_type <> PB_WT_VARINT THEN
+                                pb_decode := FALSE;
+                                RETURN;
+                            END_IF;
+                            IF NOT pb_dec_varint(iter, stream) THEN
+                                pb_decode := FALSE;
+                                RETURN;
+                            END_IF;
+                        PB_LTYPE_UVARINT:
+                            IF wire_type <> PB_WT_VARINT THEN
+                                pb_decode := FALSE;
+                                RETURN;
+                            END_IF;
+                            IF NOT pb_dec_varint(iter, stream) THEN
+                                pb_decode := FALSE;
+                                RETURN;
+                            END_IF;
+                        PB_LTYPE_SVARINT:
+                            IF wire_type <> PB_WT_VARINT THEN
+                                pb_decode := FALSE;
+                                RETURN;
+                            END_IF;
+                            IF NOT pb_dec_varint(iter, stream) THEN
+                                pb_decode := FALSE;
+                                RETURN;
+                            END_IF;
+                        PB_LTYPE_FIXED32:
+                            IF wire_type <> PB_WT_32BIT THEN
+                                pb_decode := FALSE;
+                                RETURN;
+                            END_IF;
+                            IF NOT pb_decode_fixed32(iter.pData, stream) THEN
+                                pb_decode := FALSE;
+                                RETURN;
+                            END_IF;
+                        PB_LTYPE_FIXED64:
+                            IF wire_type <> PB_WT_64BIT THEN
+                                pb_decode := FALSE;
+                                RETURN;
+                            END_IF;
+                            (* Only 64-bit fixed fields need special 64-bit handling *)
+{{STRIP_NO64BIT_START}}
+                            (* For B&R: decode to two 32-bit values *)
+                            IF NOT pb_decode_fixed32(iter.pData, stream) THEN
+                                pb_decode := FALSE;
+                                RETURN;
+                            END_IF;
+                            IF NOT pb_decode_fixed32(iter.pData + 4, stream) THEN
+                                pb_decode := FALSE;
+                                RETURN;
+                            END_IF;
+{{STRIP_NO64BIT_END}}
+                        PB_LTYPE_STRING:
+                            IF wire_type <> PB_WT_STRING THEN
+                                pb_decode := FALSE;
+                                RETURN;
+                            END_IF;
+                            (* Strings not fully supported in this simplified version *)
+                            pb_decode := TRUE; (* Just skip for now *)
+                            RETURN;
+                        PB_LTYPE_SUBMESSAGE, PB_LTYPE_SUBMSG_W_CB:
+                            IF wire_type <> PB_WT_STRING THEN
+                                pb_decode := FALSE;
+                                RETURN;
+                            END_IF;
+                            (* Submessages not fully supported in this simplified version *)
+                            pb_decode := TRUE; (* Just skip for now *)
+                            RETURN;
+                        ELSE
+                            (* Skip unsupported field types *)
+                            pb_decode := FALSE;
+                            RETURN;
+                    END_CASE;
+                    
+                    EXIT; (* Break from REPEAT loop *)
+                END_IF;
+            UNTIL NOT pb_field_iter_next(iter)
+            END_REPEAT;
+        END_IF;
+        
+        IF NOT field_found THEN
+            (* Skip unknown field *)
+            CASE wire_type OF
+                PB_WT_VARINT:
+                    IF NOT pb_skip_varint(stream) THEN
+                        pb_decode := FALSE;
+                        RETURN;
+                    END_IF;
+                PB_WT_64BIT:
+                    IF NOT pb_read(0, 8, stream) THEN
+                        pb_decode := FALSE;
+                        RETURN;
+                    END_IF;
+                PB_WT_STRING:
+                    IF NOT pb_skip_string(stream) THEN
+                        pb_decode := FALSE;
+                        RETURN;
+                    END_IF;
+                PB_WT_32BIT:
+                    IF NOT pb_read(0, 4, stream) THEN
+                        pb_decode := FALSE;
+                        RETURN;
+                    END_IF;
+                ELSE
+                    pb_decode := FALSE;
+                    RETURN;
+            END_CASE;
+        END_IF;
+    END_WHILE;
+    
+    pb_decode := TRUE;
+END_FUNCTION

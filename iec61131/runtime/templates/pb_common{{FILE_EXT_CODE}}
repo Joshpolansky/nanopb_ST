@@ -1,0 +1,282 @@
+{{PLATFORM_HEADER}}
+(* nanoPB main encode/decode functions *)
+(* Ported from nanoPB C library to {{PLATFORM_NAME}} IEC 61131-3 ST *)
+
+FUNCTION load_descriptor_values : BOOL
+VAR_IN_OUT
+    iter : pb_field_iter_struct;
+END_VAR
+VAR
+    word0 : UDINT;
+    data_offset : UDINT;
+    size_offset : SINT;
+    word1 : UDINT;
+    word2 : UDINT;
+    word3 : UDINT;
+    word4 : UDINT;
+    iter_descriptor : REFERENCE TO pb_msgdesc_struct;
+    field_info : REFERENCE TO ARRAY[0..0] OF UDINT;
+    field : REFERENCE TO UDINT;
+    submsg_desc : REFERENCE TO ARRAY[0..0] OF UDINT;
+END_VAR
+
+	iter_descriptor{{FIELD_PTR_ACCESS}}iter.descriptor;
+    field_info{{FIELD_PTR_ACCESS}}iter_descriptor.field_info;
+    IF iter.index >= iter_descriptor.field_count THEN
+        load_descriptor_values := FALSE;
+        RETURN;
+    END_IF;
+
+    word0 := (field_info[iter.field_info_index]);
+    iter.type := {{UDINT_TO_USINT}}(SHR(word0, 8) AND 16#FF);
+
+    CASE (word0 AND 3) OF
+        0: (* 1-word format *)
+            iter.array_size := 1;
+            iter.tag := {{UDINT_TO_UINT}}(SHR(word0, 2) AND 16#3F);
+            size_offset := {{UDINT_TO_SINT}}(SHR(word0, 24) AND 16#0F);
+            data_offset := SHR(word0, 16) AND 16#FF;
+            iter.data_size := {{UDINT_TO_UINT}}(SHR(word0, 28) AND 16#0F);
+
+        1: (* 2-word format *)
+            word1 := (field_info[iter.field_info_index + 1]);
+            iter.array_size := {{UDINT_TO_UINT}}(SHR(word0, 16) AND 16#0FFF);
+            iter.tag := {{UDINT_TO_UINT}}((SHR(word0, 2) AND 16#3F) OR (SHL(SHR(word1, 28), 6)));
+            size_offset := {{UDINT_TO_SINT}}(SHR(word0, 28) AND 16#0F);
+            data_offset := word1 AND 16#FFFF;
+            iter.data_size := {{UDINT_TO_UINT}}(SHR(word1, 16) AND 16#0FFF);
+
+        2: (* 4-word format *)
+            word1 := (field_info[iter.field_info_index + 1]);
+            word2 := (field_info[iter.field_info_index + 2]);
+            word3 := (field_info[iter.field_info_index + 3]);
+            iter.array_size := {{UDINT_TO_UINT}}(SHR(word0, 16));
+            iter.tag := {{UDINT_TO_UINT}}((SHR(word0, 2) AND 16#3F) OR (SHL(SHR(word1, 8), 6)));
+            size_offset := {{UDINT_TO_SINT}}(word1 AND 16#FF);
+            data_offset := word2;
+            iter.data_size := {{UDINT_TO_UINT}}(word3);
+
+        ELSE (* 8-word format *)
+            word1 := (field_info[iter.field_info_index + 1]);
+            word2 := (field_info[iter.field_info_index + 2]);
+            word3 := (field_info[iter.field_info_index + 3]);
+            word4 := (field_info[iter.field_info_index + 4]);
+            iter.array_size := {{UDINT_TO_UINT}}(word4);
+            iter.tag := {{UDINT_TO_UINT}}((SHR(word0, 2) AND 16#3F) OR (SHL(SHR(word1, 8), 6)));
+            size_offset := {{UDINT_TO_SINT}}(word1 AND 16#FF);
+            data_offset := word2;
+            iter.data_size := {{UDINT_TO_UINT}}(word3);
+    END_CASE;
+
+    IF iter.message = 0 THEN
+        (* Avoid doing arithmetic on null pointers, it is undefined *)
+        iter.pField := 0;
+        iter.pSize := 0;
+    ELSE
+        iter.pField := iter.message + data_offset;
+
+        IF size_offset <> 0 THEN
+            iter.pSize := iter.pField - {{SINT_TO_UDINT}}(size_offset);
+        ELSIF (PB_HTYPE(iter.type) = PB_HTYPE_REPEATED) AND 
+              ((PB_ATYPE(iter.type) = PB_ATYPE_STATIC) OR 
+               (PB_ATYPE(iter.type) = PB_ATYPE_POINTER)) THEN
+            (* Fixed count array *)
+            iter.pSize := ADR(iter.array_size);
+        ELSE
+            iter.pSize := 0;
+        END_IF;
+
+        IF (PB_ATYPE(iter.type) = PB_ATYPE_POINTER) AND (iter.pField <> 0) THEN
+            field{{FIELD_PTR_ACCESS}}iter.pField;
+            iter.pData := field; (* Dereference pointer *)
+        ELSE
+            iter.pData := iter.pField;
+        END_IF;
+    END_IF;
+
+    IF PB_LTYPE_IS_SUBMSG(iter.type) THEN
+        submsg_desc{{FIELD_PTR_ACCESS}}iter_descriptor.submsg_info;
+        iter.submsg_desc := submsg_desc[iter.submessage_index];
+    ELSE
+        iter.submsg_desc := 0;
+    END_IF;
+
+    load_descriptor_values := TRUE;
+END_FUNCTION
+
+FUNCTION advance_iterator : BOOL
+VAR_IN_OUT
+    iter : pb_field_iter_struct;
+END_VAR
+VAR
+    iter_descriptor : REFERENCE TO pb_msgdesc_struct;
+    field_info : REFERENCE TO ARRAY[0..0] OF UDINT;
+    prev_descriptor : UDINT;
+    prev_type : USINT;
+    descriptor_len : UINT;
+END_VAR
+
+    iter.index := iter.index + 1;
+    iter_descriptor{{FIELD_PTR_ACCESS}}iter.descriptor;
+    field_info{{FIELD_PTR_ACCESS}}iter_descriptor.field_info;
+    IF iter.index >= iter_descriptor.field_count THEN
+        (* Restart *)
+        iter.index := 0;
+        iter.field_info_index := 0;
+        iter.submessage_index := 0;
+        iter.required_field_index := 0;
+    ELSE
+        (* Increment indexes based on previous field type.
+         * All field info formats have the following fields:
+         * - lowest 2 bits tell the amount of words in the descriptor (2^n words)
+         * - bits 2..7 give the lowest bits of tag number.
+         * - bits 8..15 give the field type.
+         *)
+        prev_descriptor := (field_info[iter.field_info_index]);
+        prev_type := {{UDINT_TO_USINT}}(SHR(prev_descriptor, 8) AND 16#FF);
+        descriptor_len := {{UDINT_TO_UINT}}(SHL(1, (prev_descriptor AND 3)));
+
+        (* Add to fields.
+         * The cast to pb_size_t is needed to avoid -Wconversion warning.
+         * Because the data is is constants from generator, there is no danger of overflow.
+         *)
+        iter.field_info_index := iter.field_info_index + descriptor_len;
+        IF PB_HTYPE(prev_type) = PB_HTYPE_REQUIRED THEN
+            iter.required_field_index := iter.required_field_index + 1;
+        END_IF;
+        IF PB_LTYPE_IS_SUBMSG(prev_type) THEN
+            iter.submessage_index := iter.submessage_index + 1;
+        END_IF;
+    END_IF;
+
+    advance_iterator := TRUE;
+END_FUNCTION
+
+FUNCTION pb_field_iter_begin : BOOL
+VAR_INPUT
+    message : UDINT; (* void pointer *)
+END_VAR
+VAR_IN_OUT
+    iter : pb_field_iter_struct;
+    desc : pb_msgdesc_struct;
+END_VAR
+
+    (* Clear iterator structure *)
+    {{MEMSET_FUNC}}(ADR(iter), 0, SIZEOF(iter));
+
+    iter.descriptor := ADR(desc);
+    iter.message := message;
+
+    pb_field_iter_begin := load_descriptor_values(iter);
+END_FUNCTION
+
+
+FUNCTION pb_field_iter_next : BOOL
+VAR_IN_OUT
+    iter : pb_field_iter_struct;
+END_VAR
+
+    advance_iterator(iter);
+    load_descriptor_values(iter);
+    pb_field_iter_next := (iter.index <> 0);
+END_FUNCTION
+
+FUNCTION pb_field_iter_find : BOOL
+VAR_IN_OUT
+    iter : pb_field_iter_struct;
+    tag : UDINT;
+END_VAR
+VAR
+    start : UINT;
+    fieldinfo : UDINT;
+    iter_descriptor : REFERENCE TO pb_msgdesc_struct;
+    iter_descriptor_field_info : REFERENCE TO ARRAY[0..0] OF UDINT;
+END_VAR
+
+    iter_descriptor{{FIELD_PTR_ACCESS}}iter.descriptor;
+    iter_descriptor_field_info{{FIELD_PTR_ACCESS}}iter_descriptor.field_info;  
+
+    IF iter.tag = tag THEN
+        pb_field_iter_find := TRUE; (* Nothing to do, correct field already. *)
+        RETURN;
+    ELSIF tag > iter_descriptor.largest_tag THEN
+        pb_field_iter_find := FALSE;
+        RETURN;
+    ELSE
+        start := iter.index;
+
+        IF tag < iter.tag THEN
+            (* Fields are in tag number order, so we know that tag is between
+             * 0 and our start position. Setting index to end forces
+             * advance_iterator() call below to restart from beginning. *)
+            iter.index := iter_descriptor.field_count;
+        END_IF;
+
+        REPEAT
+            (* Advance iterator but don't load values yet *)
+            advance_iterator(iter);
+
+            iter_descriptor{{FIELD_PTR_ACCESS}}iter.descriptor;
+            iter_descriptor_field_info{{FIELD_PTR_ACCESS}}iter_descriptor.field_info;  
+            (* Do fast check for tag number match *)
+            fieldinfo := (iter_descriptor_field_info[iter.field_info_index]);
+
+            IF (SHR(fieldinfo, 2) AND 16#3F) = (tag AND 16#3F) THEN
+                (* Good candidate, check further *)
+                load_descriptor_values(iter);
+
+                IF (iter.tag = tag) AND 
+                   (PB_LTYPE(iter.type) <> PB_LTYPE_EXTENSION) THEN
+                    (* Found it *)
+                    pb_field_iter_find := TRUE;
+                    RETURN;
+                END_IF;
+            END_IF;
+        UNTIL iter.index = start
+        END_REPEAT;
+
+        (* Searched all the way back to start, and found nothing. *)
+        load_descriptor_values(iter);
+        pb_field_iter_find := FALSE;
+    END_IF;
+END_FUNCTION
+
+FUNCTION pb_field_iter_begin_const : BOOL
+VAR_INPUT
+    message : UDINT; (* const void pointer *)
+END_VAR
+VAR_IN_OUT
+    iter : pb_field_iter_struct;
+    desc : pb_msgdesc_struct;
+END_VAR
+    pb_field_iter_begin_const := pb_field_iter_begin(message, iter, desc);
+END_FUNCTION
+
+FUNCTION PB_HTYPE : USINT
+VAR_INPUT
+    type : USINT;    
+END_VAR
+    PB_HTYPE := type AND PB_HTYPE_MASK;
+END_FUNCTION
+
+FUNCTION PB_ATYPE : USINT
+VAR_INPUT
+    type : USINT;    
+END_VAR
+    PB_ATYPE := type AND PB_ATYPE_MASK;
+END_FUNCTION
+
+FUNCTION PB_LTYPE_IS_SUBMSG : BOOL
+VAR_INPUT
+    type : USINT;
+END_VAR
+    PB_LTYPE_IS_SUBMSG := ((type AND PB_LTYPE_MASK) = PB_LTYPE_SUBMESSAGE) OR
+                          ((type AND PB_LTYPE_MASK) = PB_LTYPE_SUBMSG_W_CB);
+END_FUNCTION
+
+FUNCTION PB_LTYPE : USINT
+VAR_INPUT
+    type : USINT;
+END_VAR
+    PB_LTYPE := type AND PB_LTYPE_MASK;
+END_FUNCTION

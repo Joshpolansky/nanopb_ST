@@ -1,0 +1,1 @@
+# Make the generator directory a proper Python package

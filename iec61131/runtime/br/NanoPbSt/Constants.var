@@ -1,0 +1,65 @@
+VAR CONSTANT
+	(* nanoPB constants ported to B&R *)
+	
+	(* Field type constants - least significant 4 bits *)
+	PB_LTYPE_BOOL : USINT := 16#00;
+	PB_LTYPE_VARINT : USINT := 16#01;
+	PB_LTYPE_UVARINT : USINT := 16#02;
+	PB_LTYPE_SVARINT : USINT := 16#03;
+	PB_LTYPE_FIXED32 : USINT := 16#04;
+	PB_LTYPE_FIXED64 : USINT := 16#05;
+	PB_LTYPE_BYTES : USINT := 16#06;
+	PB_LTYPE_STRING : USINT := 16#07;
+	PB_LTYPE_SUBMESSAGE : USINT := 16#08;
+	PB_LTYPE_SUBMSG_W_CB : USINT := 16#09;
+	PB_LTYPE_EXTENSION : USINT := 16#0A;
+	PB_LTYPE_FIXED_LENGTH_BYTES : USINT := 16#0B;
+	
+	(* Field repetition rules *)
+	PB_HTYPE_REQUIRED : USINT := 16#00;
+	PB_HTYPE_OPTIONAL : USINT := 16#10;
+	PB_HTYPE_SINGULAR : USINT := 16#10;
+	PB_HTYPE_REPEATED : USINT := 16#20;
+	PB_HTYPE_FIXARRAY : USINT := 16#20;
+	PB_HTYPE_ONEOF : USINT := 16#30;
+	
+	(* Field allocation types *)
+	PB_ATYPE_STATIC : USINT := 16#00;
+	PB_ATYPE_POINTER : USINT := 16#80;
+	PB_ATYPE_CALLBACK : USINT := 16#40;
+	
+	(* Bit masks *)
+	PB_LTYPE_MASK : USINT := 16#0F;
+	PB_HTYPE_MASK : USINT := 16#30;
+	PB_ATYPE_MASK : USINT := 16#C0;
+	
+	(* Maximum values *)
+	PB_SIZE_MAX : UINT := 65535;
+	PB_MAX_REQUIRED_FIELDS : USINT := 64;
+	
+	(* Wire type constants *)
+	PB_WIRE_TYPE_MASK : USINT := 16#07;
+	
+	(* nanoPB version *)
+	NANOPB_VERSION : STRING[20] := 'nanopb-1.0.0-dev-B&R';
+	
+	(* Error constants *)
+	PB_ERR_NONE : STRING[30] := '';
+	PB_ERR_IO : STRING[30] := 'IO error';
+	PB_ERR_INVALID_FIELD : STRING[30] := 'Invalid field';
+	PB_ERR_INVALID_TAG : STRING[30] := 'Invalid tag';
+	PB_ERR_INVALID_WIRE_TYPE : STRING[30] := 'Invalid wire type';
+	PB_ERR_EOF : STRING[30] := 'End of stream';
+	PB_ERR_BUFFER_OVERFLOW : STRING[30] := 'Buffer overflow';
+	
+	(* ===== SENSOR READING MESSAGE CONSTANTS ===== *)
+	
+	(* Field tags *)
+	SensorReading_sensor_id_tag : USINT := 1;
+	SensorReading_temperature_tag : USINT := 2;
+	SensorReading_alarm_active_tag : USINT := 3;
+	
+	(* Maximum encoded message size *)
+	SensorReading_size : USINT := 18;
+
+END_VAR

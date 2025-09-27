@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+message TestOptional {
+  // Regular required fields
+  int32 required_int = 1;
+  string required_string = 2;
+  
+  // Optional fields (should get has_ fields)
+  optional int32 optional_int = 3;
+  optional string optional_string = 4;
+  optional bool optional_bool = 5;
+  optional double optional_double = 6;
+  
+  // Repeated fields (should get _count fields)
+  repeated int32 numbers = 7;
+  repeated string names = 8;
+}
