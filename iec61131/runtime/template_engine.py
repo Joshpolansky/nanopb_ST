@@ -96,6 +96,7 @@ class BRRuntimeConfig(PlatformConfig):
             "INT_TO_DINT": "INT_TO_DINT",
             "SINT_TO_DINT": "SINT_TO_DINT",
             "UDINT_TO_DINT": "UDINT_TO_DINT",
+            "UDINT_TO_INT": "UDINT_TO_INT",
             "SINT_TO_UDINT": "SINT_TO_UDINT",
             "INT_TO_UDINT": "INT_TO_UDINT",
             "LINT_TO_UDINT": "LINT_TO_UDINT",

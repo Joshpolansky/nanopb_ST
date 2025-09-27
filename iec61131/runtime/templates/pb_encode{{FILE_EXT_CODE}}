@@ -57,6 +57,7 @@ END_VAR
         IF (stream.bytes_written + count < stream.bytes_written) OR
            (stream.bytes_written + count > stream.max_size) THEN
             pb_write := FALSE;
+            stream.errmsg := 'Buffer overflow';
             RETURN;
         END_IF;
 
@@ -185,7 +186,8 @@ END_VAR
     (* Encode field contents *)
     IF PB_ATYPE(field.type) = PB_ATYPE_CALLBACK THEN
         (* Callbacks not supported in ST version *)
-        encode_field := FALSE;
+        (* Just Skip for now *)
+        encode_field := TRUE;
     ELSIF PB_HTYPE(field.type) = PB_HTYPE_REPEATED THEN
         (* TODO Support arrays *)
         (* Arrays not fully supported in this simplified version *)
@@ -209,7 +211,7 @@ VAR
 END_VAR
 
     msgdesc{{FIELD_PTR_ACCESS}}fields;
-    IF NOT pb_field_iter_begin_const(iter, msgdesc, src_struct) THEN
+    IF NOT pb_field_iter_begin_const(src_struct, iter, msgdesc) THEN
         pb_encode := TRUE; (* Empty message type *)
         RETURN;
     END_IF;
@@ -301,6 +303,7 @@ END_VAR
     byte := {{UDINT_TO_USINT}}(low AND 16#7F);
     low := SHR(low, 7);
 
+    (* Process first 4 bytes (28 bits) from low part *)
     WHILE (i < 4) AND ((low <> 0) OR (high <> 0)) DO
         byte := byte OR 16#80;
         buffer[i] := byte;
@@ -309,10 +312,13 @@ END_VAR
         low := SHR(low, 7);
     END_WHILE;
 
+    (* Transition from low to high part *)
     IF high <> 0 THEN
+        (* Combine remaining 4 bits from low with first 3 bits from high *)
         byte := byte OR {{UDINT_TO_USINT}}(SHL(high AND 16#07, 4));
         high := SHR(high, 3);
 
+        (* Continue with remaining high bits *)
         WHILE high <> 0 DO
             byte := byte OR 16#80;
             buffer[i] := byte;
@@ -523,50 +529,43 @@ END_FUNCTION
 
 FUNCTION pb_encode_fixed32 : BOOL (*Encode 32-bit fixed value*)
 VAR_INPUT
-    value : UDINT; (* const void pointer *)
+    value : UDINT;
 END_VAR
 VAR_IN_OUT
     stream : pb_ostream_struct;
 END_VAR    
 VAR
-    val : UDINT;
     bytes : ARRAY[0..3] OF USINT;
-    val_ptr : REFERENCE TO UDINT;
 END_VAR
 
-    val_ptr{{FIELD_PTR_ACCESS}}value;
-    val := val_ptr;
-    bytes[0] := {{UDINT_TO_USINT}}(val AND 16#FF);
-    bytes[1] := {{UDINT_TO_USINT}}(SHR(val, 8) AND 16#FF);
-    bytes[2] := {{UDINT_TO_USINT}}(SHR(val, 16) AND 16#FF);
-    bytes[3] := {{UDINT_TO_USINT}}(SHR(val, 24) AND 16#FF);
+    bytes[0] := {{UDINT_TO_USINT}}(value AND 16#FF);
+    bytes[1] := {{UDINT_TO_USINT}}(SHR(value, 8) AND 16#FF);
+    bytes[2] := {{UDINT_TO_USINT}}(SHR(value, 16) AND 16#FF);
+    bytes[3] := {{UDINT_TO_USINT}}(SHR(value, 24) AND 16#FF);
     pb_encode_fixed32 := pb_write(ADR(bytes), 4, stream);
 END_FUNCTION
 
 {{STRIP_64BIT_START}}
 FUNCTION pb_encode_fixed64 : BOOL (*Encode 64-bit fixed value - Native 64-bit version*)
 VAR_INPUT
-    value : UDINT; (* const void pointer *)
+    low_part : UDINT; (* const void pointer *)
+    high_part : UDINT; (* const void pointer *)
 END_VAR
 VAR_IN_OUT
     stream : pb_ostream_struct;
 END_VAR    
 VAR
-    val : {{UINT64_TYPE}};
     bytes : ARRAY[0..7] OF USINT;
-    val_ptr : REFERENCE TO {{UINT64_TYPE}};
 END_VAR
 
-    val_ptr{{FIELD_PTR_ACCESS}}value;
-    val := val_ptr;
-    bytes[0] := {{ULINT_TO_USINT}}(val AND 16#FF);
-    bytes[1] := {{ULINT_TO_USINT}}(SHR(val, 8) AND 16#FF);
-    bytes[2] := {{ULINT_TO_USINT}}(SHR(val, 16) AND 16#FF);
-    bytes[3] := {{ULINT_TO_USINT}}(SHR(val, 24) AND 16#FF);
-    bytes[4] := {{ULINT_TO_USINT}}(SHR(val, 32) AND 16#FF);
-    bytes[5] := {{ULINT_TO_USINT}}(SHR(val, 40) AND 16#FF);
-    bytes[6] := {{ULINT_TO_USINT}}(SHR(val, 48) AND 16#FF);
-    bytes[7] := {{ULINT_TO_USINT}}(SHR(val, 56) AND 16#FF);
+    bytes[0] := {{ULINT_TO_USINT}}(low_part AND 16#FF);
+    bytes[1] := {{ULINT_TO_USINT}}(SHR(low_part, 8) AND 16#FF);
+    bytes[2] := {{ULINT_TO_USINT}}(SHR(low_part, 16) AND 16#FF);
+    bytes[3] := {{ULINT_TO_USINT}}(SHR(low_part, 24) AND 16#FF);
+    bytes[4] := {{ULINT_TO_USINT}}(high_part AND 16#FF);
+    bytes[5] := {{ULINT_TO_USINT}}(SHR(high_part, 8) AND 16#FF);
+    bytes[6] := {{ULINT_TO_USINT}}(SHR(high_part, 16) AND 16#FF);
+    bytes[7] := {{ULINT_TO_USINT}}(SHR(high_part, 24) AND 16#FF);
     pb_encode_fixed64 := pb_write(ADR(bytes), 8, stream);
 END_FUNCTION
 {{STRIP_64BIT_END}}
@@ -841,10 +840,14 @@ VAR_IN_OUT
     field : pb_field_iter_struct;
     stream : pb_ostream_struct;
 END_VAR
+VAR
+    value32_ptr : REFERENCE TO UDINT;
+END_VAR
 
     CASE field.data_size OF
         4:
-            pb_enc_fixed := pb_encode_fixed32(field.pData, stream);
+            value32_ptr{{FIELD_PTR_ACCESS}}field.pData;
+            pb_enc_fixed := pb_encode_fixed32(value32_ptr, stream);
         8:
             pb_enc_fixed := pb_encode_fixed64(field.pData, stream);
         ELSE

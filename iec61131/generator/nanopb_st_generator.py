@@ -38,6 +38,32 @@ except ImportError as e:
 
 
 # ============================================================================
+# CONSOLIDATED nanoPB TYPE MAPPING
+# ============================================================================
+
+# nanoPB type mapping - consolidate to avoid duplication
+# Map nanoPB field types to 8-bit type values based on pb.h definitions
+NANOPB_TYPE_MAP = {
+    'VARINT': 0x00,
+    'SVARINT': 0x00,
+    'FIXED32': 0x01,
+    'FIXED64': 0x02,
+    'STRING': 0x03,
+    'BYTES': 0x04,
+    'SUBMESSAGE': 0x08,  # PB_LTYPE_SUBMESSAGE = 0x08U per pb.h
+    'EXTENSION': 0x06,
+    'BOOL': 0x07,
+    'ENUM': 0x00,    # Treated as VARINT
+    'INT32': 0x00,   # Treated as VARINT
+    'UINT32': 0x00,  # Treated as VARINT
+    'INT64': 0x00,   # Treated as VARINT
+    'UINT64': 0x00,  # Treated as VARINT
+    'FLOAT': 0x01,   # Treated as FIXED32
+    'DOUBLE': 0x02   # Treated as FIXED64
+}
+
+
+# ============================================================================
 # MULTI-PLATFORM CONFIGURATION CLASSES
 # ============================================================================
 
@@ -447,39 +473,25 @@ class STMessageWrapper:
 
     def _get_nanopb_type_bits(self, field):
         """Get nanoPB type bits for field encoding"""
-        # Map nanoPB field types to 8-bit type values
-        # Based on nanoPB pb.h type definitions
-        type_map = {
-            'VARINT': 0x00,
-            'SVARINT': 0x00,
-            'FIXED32': 0x01,
-            'FIXED64': 0x02,
-            'STRING': 0x03,
-            'BYTES': 0x04,
-            'SUBMESSAGE': 0x05,
-            'EXTENSION': 0x06,
-            'BOOL': 0x07,
-        }
-        
-        # Map protobuf types to nanoPB type bits
+        # Map protobuf types to nanoPB type bits using consolidated mapping
         if field.pbtype == "BOOL":
-            return type_map['BOOL']
+            return NANOPB_TYPE_MAP['BOOL']
         elif field.pbtype in ["INT32", "INT64", "UINT32", "UINT64", "ENUM"]:
-            return type_map['VARINT']
+            return NANOPB_TYPE_MAP['VARINT']
         elif field.pbtype in ["SINT32", "SINT64"]:
-            return type_map['SVARINT']
+            return NANOPB_TYPE_MAP['SVARINT']
         elif field.pbtype in ["FIXED32", "SFIXED32", "FLOAT"]:
-            return type_map['FIXED32']
+            return NANOPB_TYPE_MAP['FIXED32']
         elif field.pbtype in ["FIXED64", "SFIXED64", "DOUBLE"]:
-            return type_map['FIXED64']
+            return NANOPB_TYPE_MAP['FIXED64']
         elif field.pbtype == "STRING":
-            return type_map['STRING']
+            return NANOPB_TYPE_MAP['STRING']
         elif field.pbtype == "BYTES":
-            return type_map['BYTES']
+            return NANOPB_TYPE_MAP['BYTES']
         elif field.pbtype == "MESSAGE":
-            return type_map['SUBMESSAGE']
+            return NANOPB_TYPE_MAP['SUBMESSAGE']
         else:
-            return type_map['VARINT']  # Default fallback
+            return NANOPB_TYPE_MAP['VARINT']  # Default fallback
 
 
 class STProtoFileWrapper:
@@ -711,30 +723,9 @@ class STProtoFileWrapper:
         return "\n".join(lines)
 
     def _get_nanopb_type_bits(self, field):
-        """Get nanoPB type bits for field encoding"""
-        # Map nanoPB field types to 8-bit type values
-        # Based on nanoPB pb.h type definitions
-        type_map = {
-            'VARINT': 0x00,
-            'SVARINT': 0x00,
-            'FIXED32': 0x01,
-            'FIXED64': 0x02,
-            'STRING': 0x03,
-            'BYTES': 0x04,
-            'SUBMESSAGE': 0x05,
-            'EXTENSION': 0x06,
-            'BOOL': 0x07,
-            'ENUM': 0x00,    # Treated as VARINT
-            'INT32': 0x00,   # Treated as VARINT
-            'UINT32': 0x00,  # Treated as VARINT
-            'INT64': 0x00,   # Treated as VARINT
-            'UINT64': 0x00,  # Treated as VARINT
-            'FLOAT': 0x01,   # Treated as FIXED32
-            'DOUBLE': 0x02   # Treated as FIXED64
-        }
-        
+        """Get nanoPB type bits for field encoding"""        
         field_type = getattr(field, 'pbtype', 'VARINT')
-        return type_map.get(field_type, 0x00)
+        return NANOPB_TYPE_MAP.get(field_type, 0x00)
 
 
 def generate_st_from_proto_simple_class_based(
