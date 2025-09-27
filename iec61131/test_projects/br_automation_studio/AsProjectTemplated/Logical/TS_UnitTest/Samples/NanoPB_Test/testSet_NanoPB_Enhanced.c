@@ -6,8 +6,8 @@
 
 /* Test variables */
 //static USINT test_buffer[1000];
-//static pb_st_ostream_struct output_stream;
-//static pb_st_istream_struct input_stream;
+//static pb_ostream_struct output_stream;
+//static pb_istream_struct input_stream;
 
 /* Test message instances */
 static test_SensorReading sensor_msg;
@@ -52,23 +52,23 @@ _TEST test_nanopb_sensor_reading_encode_decode(void)
 	original_msg.location.funcs.encode = NULL; /* We'll skip string encoding for now */
     
 	/* Create output stream */
-	pb_st_ostream_from_buffer(&out_stream, encoded_buffer, sizeof(encoded_buffer));
+	pb_ostream_from_buffer(encoded_buffer, sizeof(encoded_buffer), &out_stream);
     
 	/* Encode message using nanoPB library functions */
-	TEST_ASSERT_MESSAGE(pb_st_encode(&out_stream, &test_SensorReading_msg, &original_msg), 
+	TEST_ASSERT_MESSAGE(pb_encode(&test_SensorReading_msg, &original_msg, &out_stream), 
 		"Failed to encode SensorReading with nanoPB");
     
 	TEST_ASSERT_MESSAGE(out_stream.bytes_written > 0, "No bytes written during encoding");
 	TEST_ASSERT_MESSAGE(out_stream.bytes_written < sizeof(encoded_buffer), "Encoded message too large");
     
 	/* Create input stream from encoded data */
-	pb_st_istream_from_buffer(&in_stream, encoded_buffer, out_stream.bytes_written);
+	pb_istream_from_buffer(encoded_buffer, out_stream.bytes_written, &in_stream);
     
 	/* Initialize decode message */
 	memset(&decoded_msg,0,sizeof(decoded_msg));
     
 	/* Decode message */
-	TEST_ASSERT_MESSAGE(pb_st_decode(&in_stream, &test_SensorReading_msg, &decoded_msg),
+	TEST_ASSERT_MESSAGE(pb_decode(&test_SensorReading_msg, &decoded_msg, &in_stream),
 		"Failed to decode SensorReading with nanoPB");
     
 	/* Verify decoded data matches original */
@@ -106,14 +106,14 @@ _TEST test_nanopb_integer_types_comprehensive(void)
 	original_msg.sfixed64_field = -123456789012345LL;
     
 	/* Encode */
-	pb_st_ostream_from_buffer(&out_stream, encoded_buffer, sizeof(encoded_buffer));
-	TEST_ASSERT_MESSAGE(pb_st_encode(&out_stream, &test_IntegerTypes_msg, &original_msg),
+	pb_ostream_from_buffer(encoded_buffer, sizeof(encoded_buffer), &out_stream);
+	TEST_ASSERT_MESSAGE(pb_encode(&test_IntegerTypes_msg, &original_msg, &out_stream),
 		"Failed to encode IntegerTypes");
     
 	/* Decode */
-	pb_st_istream_from_buffer(&in_stream, encoded_buffer, out_stream.bytes_written);
+	pb_istream_from_buffer(encoded_buffer, out_stream.bytes_written, &in_stream);
 	memset(&decoded_msg,0,sizeof(decoded_msg));
-    TEST_ASSERT_MESSAGE(pb_st_decode(&in_stream, &test_IntegerTypes_msg, &decoded_msg),
+    TEST_ASSERT_MESSAGE(pb_decode(&test_IntegerTypes_msg, &decoded_msg, &in_stream),
                        "Failed to decode IntegerTypes");
     
     /* Verify all integer types */
@@ -142,7 +142,7 @@ _TEST test_nanopb_real_field_iteration(void)
 	USINT field_count = 0;
     
 	/* Initialize field iterator with real nanoPB message descriptor */
-	TEST_ASSERT_MESSAGE(pb_st_field_iter_begin(&iter, &test_SensorReading_msg, (UDINT*)&test_msg),
+	TEST_ASSERT_MESSAGE(pb_field_iter_begin(&test_msg, &iter, &test_SensorReading_msg),
 		"Failed to begin field iteration with real descriptors");
     
 	/* Iterate through all fields */
@@ -171,7 +171,7 @@ _TEST test_nanopb_real_field_iteration(void)
 				break;
 		}
         
-	} while(pb_st_field_iter_next(&iter));
+	} while(pb_field_iter_next(&iter));
     
 	/* Verify all expected fields were found */
 	TEST_ASSERT_MESSAGE(found_fields[1], "sensor_id field not found");
@@ -200,43 +200,128 @@ _TEST test_nanopb_compatibility_check(void)
 	msg.temperature = 25.0f;
     
 	/* Test individual encoding functions */
-	pb_st_ostream_from_buffer(&out_stream, buffer, sizeof(buffer));
+	pb_ostream_from_buffer(buffer, sizeof(buffer), &out_stream);
     
 	/* Test varint encoding (sensor_id) */
-	TEST_ASSERT_MESSAGE(pb_st_encode_varint(&out_stream, msg.sensor_id), 
-		"ST pb_st_encode_varint failed with nanoPB data");
+	TEST_ASSERT_MESSAGE(pb_encode_varint(msg.sensor_id, &out_stream), 
+		"ST pb_encode_varint failed with nanoPB data");
     
 	/* Test fixed32 encoding (temperature) */
-	TEST_ASSERT_MESSAGE(pb_st_encode_fixed32(&out_stream, *(UDINT*)&msg.temperature),
-		"ST pb_st_encode_fixed32 failed with nanoPB data");
+	TEST_ASSERT_MESSAGE(pb_encode_fixed32(*(UDINT*)&msg.temperature, &out_stream),
+		"ST pb_encode_fixed32 failed with nanoPB data");
     
 	/* Test decoding */
-	pb_st_istream_from_buffer(&in_stream, buffer, out_stream.bytes_written);
+	pb_istream_from_buffer(buffer, out_stream.bytes_written,&in_stream);
     
 	UDINT decoded_sensor_id;
-	UDINT decoded_temp_bits;
+	float decoded_temp_bits;
     
-	TEST_ASSERT_MESSAGE(pb_st_decode_varint(&in_stream, &decoded_sensor_id),
-		"ST pb_st_decode_varint failed");
-	TEST_ASSERT_MESSAGE(pb_st_decode_fixed32(&in_stream, &decoded_temp_bits),
-		"ST pb_st_decode_fixed32 failed");
+	TEST_ASSERT_MESSAGE(pb_decode_varint(&decoded_sensor_id, &in_stream),
+		"ST pb_decode_varint failed");
+	TEST_ASSERT_MESSAGE(pb_decode_fixed32(&decoded_temp_bits, &in_stream),
+		"ST pb_decode_fixed32 failed");
     
 	/* Verify decoded values */
 	TEST_ASSERT_EQUAL_INT(msg.sensor_id, decoded_sensor_id);
-	TEST_ASSERT_FLOAT_WITHIN(0.01f, msg.temperature, *(float*)&decoded_temp_bits);
+	TEST_ASSERT_FLOAT_WITHIN(0.01f, msg.temperature, decoded_temp_bits);
     
 	TEST_INFO("ST library functions compatible with nanoPB structures");
 	TEST_DONE;
 }
 
-/* Test fixtures */
-UNITTEST_FIXTURES(nanopb_enhanced_fixtures)
+
+_TEST test_nanopb_generated(void){
+	ProtoSystemStatus original_msg = {0};
+	ProtoSystemStatus decoded_msg = {0};
+	USINT encoded_buffer[100];
+	pb_ostream_struct out_stream;
+	pb_istream_struct in_stream;
+   
+	
+	/* Populate some test data */
+	original_msg.lastReading.has_alarmActive = 1;
+	original_msg.lastReading.alarmActive = 1;
+       
+	/* Create output stream */
+	pb_ostream_from_buffer(encoded_buffer, sizeof(encoded_buffer), &out_stream);
+    
+	/* Encode message using nanoPB library functions */
+	TEST_ASSERT_MESSAGE(pb_encode(&SystemStatus_descriptor, &original_msg, &out_stream), "Failed to encode SensorReading with nanoPB");
+    
+	TEST_ASSERT_MESSAGE(out_stream.bytes_written > 0, "No bytes written during encoding");
+	TEST_ASSERT_MESSAGE(out_stream.bytes_written < sizeof(encoded_buffer), "Encoded message too large");
+    
+	/* Create input stream from encoded data */
+	pb_istream_from_buffer(encoded_buffer, out_stream.bytes_written, &in_stream);
+    
+	/* Initialize decode message */
+	memset(&decoded_msg,0,sizeof(decoded_msg));
+    
+	/* Decode message */
+	TEST_ASSERT_MESSAGE(pb_decode(&SystemStatus_descriptor, &decoded_msg, &in_stream),
+		"Failed to decode SensorReading with nanoPB");
+    
+	/* Verify decoded data matches original */
+	TEST_ASSERT_EQUAL_INT(original_msg.activeConnections, decoded_msg.activeConnections);
+	TEST_ASSERT_FLOAT_WITHIN(0.01f, original_msg.cpuUsage, decoded_msg.cpuUsage);
+	TEST_ASSERT_EQUAL_INT(original_msg.has_activeConnections, decoded_msg.has_activeConnections);
+
+	TEST_ASSERT_EQUAL_MEM(&original_msg, &decoded_msg, sizeof(decoded_msg));
+	
+	
+	TEST_INFO("nanoPB SensorReading encode/decode completed successfully");
+	TEST_DONE;
+}
+
+_TEST test_nanopb_generated_live(void){
+	USINT encoded_buffer[100];
+	pb_ostream_struct out_stream;
+	pb_istream_struct in_stream;
+   
+	       
+	/* Create output stream */
+	pb_ostream_from_buffer(encoded_buffer, sizeof(encoded_buffer), &out_stream);
+    
+	/* Encode message using nanoPB library functions */
+	TEST_ASSERT_MESSAGE(pb_encode(&SystemStatus_descriptor, &gSystemStatusIn, &out_stream), "Failed to encode SensorReading with nanoPB");
+    
+	TEST_ASSERT_MESSAGE(out_stream.bytes_written > 0, "No bytes written during encoding");
+	TEST_ASSERT_MESSAGE(out_stream.bytes_written < sizeof(encoded_buffer), "Encoded message too large");
+    
+	/* Create input stream from encoded data */
+	pb_istream_from_buffer(encoded_buffer, out_stream.bytes_written, &in_stream);
+    
+	/* Initialize decode message */
+	memset(&gSystemStatusOut,0,sizeof(gSystemStatusOut));
+    
+	/* Decode message */
+	TEST_ASSERT_MESSAGE(pb_decode(&SystemStatus_descriptor, &gSystemStatusOut, &in_stream),
+		"Failed to decode SensorReading with nanoPB");
+    
+	TEST_ASSERT_EQUAL_MEM(&gSystemStatusIn, &gSystemStatusOut, sizeof(gSystemStatusOut));
+	
+	
+	TEST_INFO("nanoPB SensorReading encode/decode completed successfully");
+	TEST_DONE;
+}
+
+
+/*
+B+R UnitTest: This is generated code.
+Do not edit! Do not move!
+Description: UnitTest Testprogramm infrastructure (TestSet).
+LastUpdated: 2025-09-22 05:06:55Z
+By B+R UnitTest Helper Version: 2.0.0.0
+*/
+UNITTEST_FIXTURES(fixtures)
 {
-	new_TestFixture("test_nanopb_sensor_reading_encode_decode", test_nanopb_sensor_reading_encode_decode),
-	new_TestFixture("test_nanopb_integer_types_comprehensive", test_nanopb_integer_types_comprehensive),
-	new_TestFixture("test_nanopb_real_field_iteration", test_nanopb_real_field_iteration),
-	new_TestFixture("test_nanopb_compatibility_check", test_nanopb_compatibility_check),
+	new_TestFixture("test_nanopb_sensor_reading_encode_decode", test_nanopb_sensor_reading_encode_decode), 
+	new_TestFixture("test_nanopb_integer_types_comprehensive", test_nanopb_integer_types_comprehensive), 
+	new_TestFixture("test_nanopb_real_field_iteration", test_nanopb_real_field_iteration), 
+	new_TestFixture("test_nanopb_compatibility_check", test_nanopb_compatibility_check), 
+	new_TestFixture("test_nanopb_generated", test_nanopb_generated), 
+	new_TestFixture("test_nanopb_generated_live", test_nanopb_generated_live), 
 };
 
-UNITTEST_CALLER_COMPLETE_EXPLICIT(testSet_NanoPB_Enhanced, "Enhanced nanoPB Tests with Real Proto Files", 
-setupTest, teardownTest, nanopb_enhanced_fixtures, 0, 0, 0);
+UNITTEST_CALLER_COMPLETE_EXPLICIT(testSet_NanoPB_Enhanced, "testSet_NanoPB_Enhanced", setupTest, teardownTest, fixtures, 0, 0, 0);
+

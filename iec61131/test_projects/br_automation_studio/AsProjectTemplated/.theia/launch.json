@@ -2,5 +2,20 @@
   // Use IntelliSense to learn about possible attributes.
   // Hover to view descriptions of existing attributes.
   "version": "0.2.0",
-  "configurations": []
+  "configurations": [
+    {
+      "type": "ar-debug",
+      "request": "launch",
+      "name": "Automation Runtime Debugger",
+      "cwd": "${command:automation-studio.gdb-shared-path}",
+      "gdb": "${command:automation-studio.gdb-path}",
+      "target": {
+        "host": "${command:automation-studio.get-remote-target}",
+        "port": "2323"
+      },
+      "initCommands": [
+        "source ${command:automation-studio.initgdb-file}"
+      ]
+    }
+  ]
 }

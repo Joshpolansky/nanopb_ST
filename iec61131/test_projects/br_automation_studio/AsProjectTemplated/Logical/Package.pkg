@@ -7,5 +7,6 @@
     <Object Type="Package" Description="Global libraries">Libraries</Object>
     <Object Type="Package">TS_UnitTest</Object>
     <Object Type="Library" Language="IEC" Reference="true">E:\clients\br\nanopb_ST\iec61131\runtime\generated\br\NanoPbSt\IEC.lby</Object>
+    <Object Type="Package">Protos</Object>
   </Objects>
 </Package>

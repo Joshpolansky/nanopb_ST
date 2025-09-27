@@ -12,7 +12,7 @@
     <AutomationRuntime Version="6.0.2" />
     <Build AnsicIncludeDirectories="\Logical\TS_UnitTest\Libraries\UnitTest\,\Logical\TS_UnitTest\Samples\Framework_Extension_With_Custom_Asserts\LibAssert1\" GccVersion="11.3.0" GeneratePPCode="false" PreBuildStep="" />
     <DefaultTargetMemory Tasks="UserROM" />
-    <Transfer GenerateRUCPackage="true" RunUnitTestsAfterTransfer="False" SavedOfflineInstallationFolder="" SavedPipDestinationFolder="" SavedRuntimeUtilityCenterPackagePath="" />
+    <Transfer AddToUserPart="False" AdditionalUserDir="" AllowDowngrade="False" AllowInitialTransfer="False" AllowPartitioning="False" ExecuteInitExitProgram="True" ForceInitialTransfer="False" GenerateRUCPackage="true" IdentificationTypeValue="" IgnoreVersion="True" KeepNonVolatileMemory="False" PreserveVariableValues="False" ProjectConsistent="False" RebootDuringTransfer="True" RunUnitTestsAfterTransfer="False" SavedOfflineInstallationFolder="" SavedPipDestinationFolder="" SavedRuntimeUtilityCenterPackagePath="" TargetIdentificationType="Always" TryToBootInRunMode="True" UserFilesIgnoreDifference="True" />
     <OnlineConfiguration Name="ARsim_TCPIP" DeviceType="TCPIP" DeviceParameters="/IF=tcpip /LOPO=11159 /SA=1" ConnectionParameters="/RT=1000 /AM=* /DAIP=127.0.0.1 /REPO=11160 /ANSL=1" Description="" />
   </Configuration>
 </Cpu>
